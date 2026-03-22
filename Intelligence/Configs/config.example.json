@@ -69,7 +69,8 @@
       "adapter": "llama",
       "listen": 6111,
       "model": "qwen3-32b-vl",
-      "artifact": "/abs/path/to/qwen3-32b-vl.gguf",
+      "artifact": "/Users/zeus/.local/share/models/Huihui-Qwen3-VL-32B-Instruct-abliterated.Q4_K_M.gguf",
+      "mmproj": "/Users/zeus/.local/share/models/Huihui-Qwen3-VL-32B-Instruct-abliterated.mmproj-f16.gguf",
       "think": ["off", "low", "mid"],
       "modalities": {
         "image_kb": 1024,
@@ -88,7 +89,7 @@
       "adapter": "llama",
       "listen": 6112,
       "model": "qwen3-4b",
-      "artifact": "/abs/path/to/qwen3-4b.gguf",
+      "artifact": "/Users/zeus/.local/share/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
       "think": ["off", "low", "mid"],
       "modalities": {
         "image_kb": 0,

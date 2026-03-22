@@ -27,7 +27,7 @@
       "adapter": "remote",
       "listen": 6102,
       "target": "https://api.x.ai",
-      "model": "grok-4.2-beta",
+      "model": "grok-4.20-0309-reasoning",
       "key_env": "XAI_API_KEY",
       "think": ["off", "low", "mid", "high"],
       "modalities": {
@@ -48,7 +48,7 @@
       "adapter": "remote",
       "listen": 6103,
       "target": "https://api.x.ai",
-      "model": "grok-4.1-fast-reasoning",
+      "model": "grok-4-1-fast-reasoning",
       "key_env": "XAI_API_KEY",
       "think": ["off", "low", "mid", "high"],
       "modalities": {

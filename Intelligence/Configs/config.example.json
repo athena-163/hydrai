@@ -1,0 +1,118 @@
+{
+  "routes": [
+    {
+      "name": "qwen35-plus",
+      "type": "chat",
+      "adapter": "remote",
+      "listen": 6101,
+      "target": "https://dashscope.aliyuncs.com/compatible-mode",
+      "model": "qwen3.5-plus",
+      "key_env": "ALIBABA_API_KEY",
+      "think": ["off", "low", "mid", "high"],
+      "modalities": {
+        "image_kb": 1024,
+        "video_kb": 10240
+      },
+      "search": false,
+      "context_k": 128,
+      "limits": {
+        "max_concurrency": 8,
+        "timeout_sec": 180
+      },
+      "extra_params": {}
+    },
+    {
+      "name": "grok42-beta",
+      "type": "chat",
+      "adapter": "remote",
+      "listen": 6102,
+      "target": "https://api.x.ai",
+      "model": "grok-4.2-beta",
+      "key_env": "XAI_API_KEY",
+      "think": ["off", "low", "mid", "high"],
+      "modalities": {
+        "image_kb": 1024,
+        "video_kb": 0
+      },
+      "search": true,
+      "context_k": 128,
+      "limits": {
+        "max_concurrency": 8,
+        "timeout_sec": 180
+      },
+      "extra_params": {}
+    },
+    {
+      "name": "grok41-fast",
+      "type": "chat",
+      "adapter": "remote",
+      "listen": 6103,
+      "target": "https://api.x.ai",
+      "model": "grok-4.1-fast-reasoning",
+      "key_env": "XAI_API_KEY",
+      "think": ["off", "low", "mid", "high"],
+      "modalities": {
+        "image_kb": 1024,
+        "video_kb": 0
+      },
+      "search": true,
+      "context_k": 128,
+      "limits": {
+        "max_concurrency": 8,
+        "timeout_sec": 180
+      },
+      "extra_params": {}
+    },
+    {
+      "name": "qwen3-32b-vl",
+      "type": "chat",
+      "adapter": "llama",
+      "listen": 6111,
+      "model": "qwen3-32b-vl",
+      "artifact": "/abs/path/to/qwen3-32b-vl.gguf",
+      "think": ["off", "low", "mid"],
+      "modalities": {
+        "image_kb": 1024,
+        "video_kb": 0
+      },
+      "search": false,
+      "context_k": 64,
+      "limits": {
+        "max_concurrency": 1,
+        "timeout_sec": 300
+      }
+    },
+    {
+      "name": "qwen3-4b",
+      "type": "chat",
+      "adapter": "llama",
+      "listen": 6112,
+      "model": "qwen3-4b",
+      "artifact": "/abs/path/to/qwen3-4b.gguf",
+      "think": ["off", "low", "mid"],
+      "modalities": {
+        "image_kb": 0,
+        "video_kb": 0
+      },
+      "search": false,
+      "context_k": 64,
+      "limits": {
+        "max_concurrency": 1,
+        "timeout_sec": 180
+      }
+    },
+    {
+      "name": "bge-m3",
+      "type": "embedding",
+      "adapter": "embedding",
+      "listen": 6121,
+      "model": "BAAI/bge-m3",
+      "output_dimension": 1024,
+      "output_encoding": "base64",
+      "limits": {
+        "max_concurrency": 4,
+        "timeout_sec": 60
+      }
+    }
+  ]
+}

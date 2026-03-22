@@ -56,6 +56,21 @@ High-level runtime model:
 
 This keeps deployment simple while preserving one-port-per-route clarity.
 
+### 3.1 Startup Contract
+
+`Intelligence` should receive its config file path at startup.
+
+Initial direction:
+
+1. config path is an explicit startup argument
+2. the service should not hardcode one machine-specific config location
+3. the repo may keep an example config file for reference
+
+Likely CLI shape:
+
+1. `python -m intelligence --config /abs/path/config.json`
+2. an installed console script equivalent is also acceptable later
+
 ## 4. Supported Route Classes
 
 The route model must support at least these route classes.
@@ -375,6 +390,19 @@ Field intent:
 5. `search`: whether server-side search is supported
 6. `context_k`: context window in thousands of tokens
 7. `limits.max_concurrency`: maximum active in-flight requests for the route
+
+### 9.2 Current Device Inventory
+
+The current machine is expected to support at least these initial routes:
+
+1. remote `qwen3.5-plus` via API, with image and video support
+2. remote `grok-4.2-beta` via API, with image support and video still unconfirmed
+3. remote `grok-4.1-fast-reasoning` via API, with image support and no video
+4. local `qwen3-32b-vl` via llama, with 64K context and image support but no video
+5. local `qwen3-4b` via llama, intended for content summarization
+6. local `bge-m3` embedding
+
+These should be reflected in the example config kept in the repo.
 
 ## 10. Adapters
 

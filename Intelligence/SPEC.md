@@ -18,7 +18,7 @@ from `aios/Proxy`, but it is a fresh service design.
 4. present a uniform internal API to trusted callers
 5. keep provider keys and local-runtime details in system space
 6. keep zero durable state
-7. support high parallelism, with route-specific limits where needed
+7. support high parallelism, with route-specific concurrency limits where needed
 
 `Intelligence` must not:
 
@@ -113,7 +113,7 @@ The route system should allow future expansion such as:
 2. multimodal generation
 3. additional specialized inference types
 
-Therefore route config must declare route kind explicitly instead of assuming
+Therefore route config must declare route type explicitly instead of assuming
 all routes are chat models.
 
 ## 5. Port Model
@@ -151,7 +151,7 @@ Intent:
 
 1. use an OpenAI-style chat-completions request format
 2. support multimodal content blocks in the request shape
-3. support optional reasoning/thinking hints
+3. support optional `think` hints
 4. support optional server-side search hints
 5. let adapters degrade or reject unsupported features per route capability
 
@@ -203,18 +203,20 @@ Multimodal direction:
 2. structured content should allow text plus modality blocks such as image, video, document, and audio references
 3. adapters decide how to translate or degrade those blocks for the actual route
 
-### 7.2 Thinking / Reasoning Hint
+### 7.2 Think Hint
 
-Reasoning should be explicit in the API surface rather than hidden as a
+Thinking should be explicit in the API surface rather than hidden as a
 provider quirk.
 
 Initial direction:
 
-1. support a caller-provided reasoning/thinking field on chat requests
-2. routes may honor, map, cap, or reject it
-3. unsupported routes should fail clearly or ignore it according to the later compatibility rules
+1. support a caller-provided `think` field on chat requests
+2. `think` is a level, not a boolean
+3. expected levels are `off`, `low`, `mid`, and `high`
+4. routes may honor, map, cap, or reject the requested level
 
-Exact field naming can be finalized later, but it should be route-agnostic.
+This keeps the caller contract route-agnostic while still allowing
+model-specific behavior underneath.
 
 ### 7.3 Server-Side Search Hint
 
@@ -252,12 +254,12 @@ Not every route supports every feature.
 Each route definition should declare capability hints such as:
 
 1. structured content input
-2. remote image input
-3. remote video input
-4. inline audio input
-5. document input
+2. image input with size limit
+3. video input with size limit
+4. inline audio input with size limit
+5. document input with size limit
 6. server-side search
-7. reasoning support
+7. supported `think` levels
 8. embedding support
 
 Behavioral rule:
@@ -272,28 +274,107 @@ This lets `Brain` talk to a stable API while still respecting model reality.
 
 Detailed schema can still evolve, but the config model should include:
 
-1. route kind
+1. route type
 2. listen port
-3. provider/runtime adapter kind
+3. provider/runtime adapter
 4. upstream target or local runtime definition
 5. logical route name
 6. physical model identifier if needed
 7. credential env var name if needed
-8. extra provider params
-9. capability flags
-10. concurrency settings
-11. timeout settings
+8. supported `think` levels
+9. modality size limits
+10. search support
+11. context window limit
+12. extra provider params
+13. capability flags
+14. concurrency settings
+15. timeout settings
 
 Local-model routes should additionally allow runtime-oriented fields such as:
 
 1. model artifact path
-2. context window limit
-3. GPU/offload/runtime flags
-4. startup policy
+2. startup policy
 
 Important rule:
 
 1. model inventory belongs in config, not in service code
+
+### 9.1 Proposed V1 Config Shape
+
+The current preferred config direction is a single route list with explicit
+`type` and simple adapter names.
+
+Example:
+
+```json
+{
+  "routes": [
+    {
+      "name": "grok41",
+      "type": "chat",
+      "adapter": "remote",
+      "listen": 6101,
+      "target": "https://api.x.ai",
+      "model": "grok-4.1-fast-reasoning",
+      "key_env": "XAI_API_KEY",
+      "think": ["off", "low", "mid", "high"],
+      "modalities": {
+        "image_kb": 0,
+        "video_kb": 0
+      },
+      "search": true,
+      "context_k": 128,
+      "limits": {
+        "max_concurrency": 8,
+        "timeout_sec": 120
+      },
+      "extra_params": {}
+    },
+    {
+      "name": "qwen4b",
+      "type": "chat",
+      "adapter": "llama",
+      "listen": 6111,
+      "model": "qwen3-4b",
+      "artifact": "/abs/path/model.gguf",
+      "think": ["off", "low", "mid"],
+      "modalities": {
+        "image_kb": 0,
+        "video_kb": 0
+      },
+      "search": false,
+      "context_k": 64,
+      "limits": {
+        "max_concurrency": 1,
+        "timeout_sec": 300
+      }
+    },
+    {
+      "name": "bge-m3",
+      "type": "embedding",
+      "adapter": "embedding",
+      "listen": 6121,
+      "model": "BAAI/bge-m3",
+      "output_dimension": 1024,
+      "output_encoding": "base64",
+      "limits": {
+        "max_concurrency": 4,
+        "timeout_sec": 60
+      }
+    }
+  ]
+}
+```
+
+Field intent:
+
+1. `type`: caller-visible API family such as `chat` or `embedding`
+2. `adapter`: implementation family such as `remote`, `llama`, or `embedding`
+3. `think`: supported `think` levels for the route
+4. `modalities`: per-modality size limits in KB, where `0` means unsupported
+5. `search`: whether server-side search is supported
+6. `context_k`: context window in thousands of tokens
+7. `limits.max_concurrency`: maximum active in-flight requests for the route
 
 ## 10. Adapters
 
@@ -302,11 +383,10 @@ into the HTTP handler.
 
 Likely adapter families:
 
-1. OpenAI-compatible remote adapter
-2. xAI Responses-style adapter
-3. local llama-server-backed adapter
-4. embedding adapter
-5. future image-generation adapter
+1. `remote`
+2. `llama`
+3. `embedding`
+4. future specialized adapters such as image-generation
 
 Each adapter is responsible for:
 
@@ -341,7 +421,6 @@ Allowed runtime-only state:
 4. local-runtime subprocess handles
 5. local-model caches
 6. in-flight request counters
-7. bounded request queues
 
 No session, identity, or workflow state should live here.
 
@@ -353,15 +432,18 @@ Rules:
 
 1. different routes may serve concurrently
 2. each route may define its own `max_concurrency`
-3. each route may define its own queue behavior
-4. local-model routes should default to tighter limits than remote routes
+3. local-model routes should default to tighter limits than remote routes
 
 Expected overload behavior:
 
-1. if a route is saturated and queueing is disabled or full, return a clear overload response
-2. overload handling should be per route, not global to the whole service
+1. if a route is saturated, return a clear overload response immediately
+2. callers are responsible for retry/defer behavior
+3. overload handling should be per route, not global to the whole service
 
-Exact status codes and queue semantics can be finalized during implementation.
+Initial direction:
+
+1. `Intelligence` should not keep an internal waiting queue in v1
+2. route backpressure should be explicit to callers
 
 ## 14. Health And Observability
 
@@ -371,12 +453,12 @@ Useful fields:
 
 1. route name
 2. port
-3. route kind
+3. route type
 4. adapter type
 5. logical model name
 6. capability flags
 7. concurrency settings
-8. current active and queued counts
+8. current active request count
 9. local-runtime readiness if applicable
 
 `Intelligence` should also emit structured logs suitable for later integration
@@ -444,7 +526,7 @@ Those belong elsewhere or later.
 The current design is coherent. The main remaining points worth clarifying
 before implementation are:
 
-1. the exact chat request fields for reasoning and search
+1. the exact chat request fields for `think` and `search`
 2. whether unsupported optional features should default to reject or ignore
 3. whether `/v1/responses` should also be exposed internally, or only `/v1/chat/completions`
 4. whether embeddings should support batching in v1
@@ -454,7 +536,7 @@ before implementation are:
 My current recommendation:
 
 1. expose only `/v1/chat/completions`, `/v1/embeddings`, and `/health` in v1
-2. make search and reasoning explicit optional request fields
+2. make `search` and `think` explicit optional request fields
 3. reject unsupported requested features clearly instead of silently ignoring them
 4. keep embeddings single-input first
 5. start with one process hosting many route listeners

@@ -877,3 +877,174 @@ Change:
 6. treat `SOUL` as self-only and `PERSONA` as outward-facing
 7. normalize memorable titles instead of requiring pre-sanitized tokens
 8. leave impulse schema and execution semantics deferred to the `Impulse` service design
+
+## 16. SkillSet
+
+Hydrai should keep `SkillSet` as the internal skill discovery primitive, with
+the same core role as AIOS but localized inside `Memory`.
+
+### 16.1 Core Role
+
+`SkillSet` is:
+
+1. a thin wrapper around a skill root
+2. compatible with the OpenClaw on-disk skill format
+3. built on top of Hydrai-local `ContexTree`
+4. responsible for discovery, prompt rendering, and optional default-skill deployment
+
+`SkillSet` is not:
+
+1. a runtime skill executor
+2. a policy engine for sandbox or identity visibility
+3. a replacement for `Brain` tool registration
+
+### 16.2 OpenClaw Compatibility
+
+Hydrai should preserve the OpenClaw skill folder format as the canonical skill
+format.
+
+That means:
+
+1. one folder per skill
+2. required `SKILL.md` at the skill root
+3. optional YAML frontmatter in `SKILL.md`
+4. markdown body in `SKILL.md`
+5. optional support folders such as `scripts/`, `references/`, `assets/`, `bin/`, or `src/`
+
+Hydrai should not invent a second incompatible skill package format.
+
+### 16.3 Storage Position
+
+At the `Memory` root, skills are global:
+
+1. `root/skills/`
+
+Within that global root, category layout such as:
+
+1. `shortlist/`
+2. `builtin/`
+3. `user/`
+
+is a caller-level convention rather than a `SkillSet` internal requirement.
+
+`SkillSet` should operate on any caller-provided root path.
+
+### 16.4 Relationship To ContexTree
+
+`SkillSet` should continue to use `ContexTree` as its substrate because:
+
+1. skills are mostly text documents and small support files
+2. semantic search over `SKILL.md` and `references/` is useful
+3. `ContexTree.view(...)` is a natural listing basis
+4. `ContexTree.search_by_text(...)` is a natural semantic search basis
+
+Important boundary:
+
+1. OpenClaw skill layout remains the on-disk truth
+2. `SkillSet` should not impose any new tree structure
+3. `SkillSet` should remain thin rather than becoming a second tree manager
+
+### 16.5 Public Python Surface
+
+Initial public Python API should stay minimal.
+
+#### `list_skills(root, depth=2, summary_depth=2)`
+
+List all skills under one root.
+
+Behavior:
+
+1. prefer `ContexTree.view(...)`
+2. detect skills by locating `SKILL.md`
+3. return one entry per enclosing skill root
+4. use `SKILL.md` semantic summary when available
+5. fall back to frontmatter `description` when semantic summary is absent
+
+Expected fields:
+
+1. `name`
+2. `path`
+3. `summary`
+
+#### `search_skills(root, query, limit=10, min_score=0.3)`
+
+Search one root for relevant skills.
+
+Behavior:
+
+1. require non-empty `query`
+2. prefer semantic search through `ContexTree.search_by_text(...)`
+3. allow matches in `SKILL.md` and nested files like `references/*`
+4. resolve each match back to the enclosing skill root
+5. deduplicate by skill root
+6. fall back to deterministic text search when semantic search is unavailable or empty
+
+Expected fields:
+
+1. `name`
+2. `path`
+3. `summary`
+4. `score`
+5. `matched_path`
+
+#### `render_prompt(skill_paths)`
+
+Render deterministic prompt blocks for already-resolved skill roots.
+
+Behavior:
+
+1. load `SKILL.md` from each provided root
+2. parse frontmatter when present
+3. include skill name, root path, optional description, and markdown body
+4. not apply category or access policy
+
+#### `deploy_defaults(root, categories=("shortlist", "builtin"))`
+
+Deploy packaged default skills into a caller-provided root.
+
+Behavior:
+
+1. create the target root when needed
+2. copy packaged `shortlist/` and `builtin/` skill trees into that root
+3. not overwrite an existing category directory
+4. report created and skipped categories
+
+`initialize(...)` may remain an alias for `deploy_defaults(...)`.
+
+### 16.6 Ownership Boundary
+
+`SkillSet` should do:
+
+1. skill discovery
+2. semantic and deterministic search
+3. skill prompt rendering
+4. packaged default-skill deployment
+
+`SkillSet` should not do:
+
+1. identity-level allow/deny filtering
+2. sandbox-level skill overlays
+3. runtime execution
+4. access control
+5. shortlist policy decisions
+
+Those remain higher-level `Memory` or `Brain` concerns.
+
+### 16.7 What To Keep From AIOS
+
+Keep:
+
+1. exact OpenClaw-compatible `SKILL.md` folder shape
+2. thin wrapper model over `ContexTree`
+3. list/search/render/deploy core surface
+4. packaged `shortlist` and `builtin` seed skills
+5. deterministic text-search fallback
+
+### 16.8 What To Change For Hydrai
+
+Change:
+
+1. keep the implementation local to `Memory`
+2. use Hydrai-local `ContexTree`, not an external shared library
+3. treat global `root/skills/` as the durable system-space storage root
+4. keep identity and sandbox visibility filtering outside the `SkillSet` library

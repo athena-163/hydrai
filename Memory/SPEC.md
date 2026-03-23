@@ -201,6 +201,54 @@ It should not yet freeze:
 3. exact AI model prompts for summarization
 4. exact API path inventory for all resource operations
 
+### 7.6 Defaults and Overrides
+
+Hydrai `ContexTree` should keep the same broad override model as AIOS:
+
+1. global defaults configured by `Memory`
+2. optional per-resource overrides
+3. optional local `.PROMPT.json` overrides inside the managed tree
+
+The important Hydrai correction is that route selection must be separated cleanly:
+
+1. text summarization route
+2. image summarization route
+3. video summarization route
+4. embedding route
+
+The embedding route must not be implicitly derived from the text route.
+
+### 7.7 Byte Limits
+
+Hydrai `ContexTree` should split byte limits by modality.
+
+At minimum:
+
+1. text `max_bytes`
+2. image `max_bytes`
+3. video `max_bytes`
+
+Semantics:
+
+1. text may be truncated to `max_bytes`
+2. image inputs must not be truncated
+3. video inputs must not be truncated
+4. oversized image/video inputs should be skipped or rejected for summarization rather than truncated
+
+This applies both to direct summarize operations and to background maintenance.
+
+### 7.8 Maintenance Ownership
+
+Maintenance registration is an upper-level `Memory` decision, not a `ContexTree`
+lib concern.
+
+That means:
+
+1. `ContexTree` should expose sync/maintenance-capable operations
+2. `Memory` decides which resources are registered for maintenance
+3. `Memory` owns scheduler state and lifecycle
+4. Hydrai should replace AIOS detached per-root daemon processes with service-owned background threads or workers
+
 ## 8. Resource Registry
 
 `Memory` should maintain a sandbox-local resource registry, likely in

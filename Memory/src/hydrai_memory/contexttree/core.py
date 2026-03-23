@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import threading
+import codecs
 
 from .detect import detect_encoding, get_mime_type, is_image_file, is_text_file, is_video_file
 from .embedder import Embedder, build_proxy_embedder
@@ -132,10 +133,9 @@ class ContexTree:
                     if self.summary_config is not None:
                         policy = self._resolve_summary_policy(os.path.dirname(abs_path))
                         text_limit = policy["limits"]["text_max_bytes"]
-                    with open(abs_path, "r", encoding=encoding, errors="replace") as f:
-                        content = f.read(text_limit)
-                    if file_size > text_limit:
-                        remaining = file_size - text_limit
+                    content, bytes_read = _read_text_up_to_bytes(abs_path, encoding, text_limit)
+                    if file_size > bytes_read:
+                        remaining = file_size - bytes_read
                         content += f"\n... {remaining:,} more bytes"
                     result[rel_path] = content
                 except OSError:
@@ -165,9 +165,8 @@ class ContexTree:
                 f.write(content)
             filename = os.path.basename(abs_path)
             data = load_summary(dir_path)
-            rel = self._rel_prefix(dir_path) + filename
-            vec = self._embed_file(rel, summary)
-            data = set_file_summary(data, filename, summary, vec)
+            text_summary, vec = self._build_file_semantics(abs_path, dir_path, filename, summary)
+            data = set_file_summary(data, filename, text_summary, vec)
             save_summary(dir_path, data)
 
     def append_text(self, path: str, content: str, summary: str = "") -> None:
@@ -185,9 +184,8 @@ class ContexTree:
             dir_path = os.path.dirname(abs_path)
             filename = os.path.basename(abs_path)
             data = load_summary(dir_path)
-            rel = self._rel_prefix(dir_path) + filename
-            vec = self._embed_file(rel, summary)
-            data = set_file_summary(data, filename, summary, vec)
+            text_summary, vec = self._build_file_semantics(abs_path, dir_path, filename, summary)
+            data = set_file_summary(data, filename, text_summary, vec)
             save_summary(dir_path, data)
 
     def rename(self, path: str, new_name: str) -> None:
@@ -474,9 +472,8 @@ class ContexTree:
             shutil.copy2(source_path, abs_path)
             filename = os.path.basename(abs_path)
             data = load_summary(dir_path)
-            rel = self._rel_prefix(dir_path) + filename
-            vec = self._embed_file(rel, summary)
-            data = set_file_summary(data, filename, summary, vec)
+            text_summary, vec = self._build_file_semantics(abs_path, dir_path, filename, summary)
+            data = set_file_summary(data, filename, text_summary, vec)
             save_summary(dir_path, data)
 
     # ------------------------------------------------------------------
@@ -505,6 +502,25 @@ class ContexTree:
             return ""
         label = rel_path or "(root)"
         return self.embedder.embed(f"[{label}] {summary}")
+
+    def _build_file_semantics(
+        self,
+        abs_path: str,
+        dir_path: str,
+        filename: str,
+        summary: str,
+    ) -> tuple[str, str]:
+        text_summary = str(summary or "").strip()
+        if not text_summary:
+            policy = self._resolve_summary_policy(dir_path)
+            if is_text_file(abs_path) and self.llm:
+                text_summary = self._summarize_text_file(abs_path, policy)
+            elif is_image_file(abs_path) and self.vl and self._within_media_limit(abs_path, "image", policy):
+                text_summary = self._summarize_media_file(abs_path, "image", policy)
+            elif is_video_file(abs_path) and self.vl and self._within_media_limit(abs_path, "video", policy):
+                text_summary = self._summarize_media_file(abs_path, "video", policy)
+        rel = self._rel_prefix(dir_path) + filename
+        return text_summary, self._embed_file(rel, text_summary)
 
     def _scan_dir(self, dir_path: str) -> tuple[list[str], list[str]]:
         """Scan a directory for non-hidden, non-symlink files and subfolders.
@@ -632,8 +648,7 @@ class ContexTree:
         if policy is not None:
             text_limit = policy["limits"]["text_max_bytes"]
         try:
-            with open(full_path, "r", encoding=encoding, errors="replace") as f:
-                content = f.read(text_limit)
+            content, _bytes_read = _read_text_up_to_bytes(full_path, encoding, text_limit)
         except OSError as e:
             logger.warning("Cannot read file %s: %s", full_path, e)
             return ""
@@ -853,3 +868,10 @@ def _human_size(size_bytes: int) -> str:
                 return f"{int(size_bytes)}{unit}"
             return f"{size_bytes:.1f}{unit}"
     return f"{size_bytes:.1f}T"
+
+
+def _read_text_up_to_bytes(path: str, encoding: str, byte_limit: int) -> tuple[str, int]:
+    with open(path, "rb") as f:
+        raw = f.read(byte_limit)
+    decoder = codecs.getincrementaldecoder(encoding)(errors="replace")
+    return decoder.decode(raw, final=False), len(raw)

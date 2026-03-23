@@ -5,43 +5,24 @@ from __future__ import annotations
 import base64
 import logging
 import mimetypes
-import os
-import json
 
 import httpx
+from urllib.parse import urlparse
+
+from .auth import build_internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 60.0
 
 
-def _internal_auth_headers() -> dict[str, str]:
-    if os.environ.get("HYDRAI_SECURITY_MODE", "dev").strip().lower() != "secure":
-        return {}
-    token_id = os.environ.get("HYDRAI_INTERNAL_TOKEN_ID", "").strip()
-    token = os.environ.get("HYDRAI_INTERNAL_TOKEN", "").strip()
-    if token_id and token:
-        return {"X-Hydrai-Token-Id": token_id, "X-Hydrai-Token": token}
-    raw = os.environ.get("HYDRAI_INTERNAL_TOKENS_JSON", "").strip()
-    if raw:
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError("invalid HYDRAI_INTERNAL_TOKENS_JSON") from exc
-        if isinstance(parsed, dict):
-            for key in sorted(parsed):
-                value = str(parsed[key]).strip()
-                if value:
-                    return {"X-Hydrai-Token-Id": str(key), "X-Hydrai-Token": value}
-    raise ValueError("secure mode requires outbound Hydrai internal token material")
-
-
 class LLMClient:
     """Client for route-local OpenAI-style text summarization."""
 
-    def __init__(self, base_url: str, model: str = ""):
+    def __init__(self, base_url: str, model: str = "", route_port: int | None = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.route_port = route_port if route_port is not None else _extract_route_port(self.base_url)
 
     def summarize_text(self, content: str) -> str:
         return self.summarize(
@@ -75,7 +56,7 @@ class LLMClient:
             resp = httpx.post(
                 f"{self.base_url}/v1/chat/completions",
                 json=payload,
-                headers=_internal_auth_headers(),
+                headers=build_internal_auth_headers(self.route_port),
                 timeout=_TIMEOUT,
             )
             resp.raise_for_status()
@@ -89,9 +70,10 @@ class LLMClient:
 class VLClient:
     """Client for route-local multimodal summarization."""
 
-    def __init__(self, base_url: str, model: str = ""):
+    def __init__(self, base_url: str, model: str = "", route_port: int | None = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.route_port = route_port if route_port is not None else _extract_route_port(self.base_url)
 
     def summarize_image(self, image_path: str, mime_type: str, prompt: str = "Describe this image concisely.") -> str:
         return self.summarize_media(image_path, prompt, mime_type=mime_type)
@@ -135,7 +117,7 @@ class VLClient:
             resp = httpx.post(
                 f"{self.base_url}/v1/chat/completions",
                 json=payload,
-                headers=_internal_auth_headers(),
+                headers=build_internal_auth_headers(self.route_port),
                 timeout=300.0,
             )
             resp.raise_for_status()
@@ -153,7 +135,7 @@ class ProxyLLMClient:
         self.intelligence_base_url = intelligence_base_url.rstrip("/")
 
     def summarize(self, content: str, system_prompt: str, route_port: int, max_tokens: int = 512) -> str:
-        client = LLMClient(f"{self.intelligence_base_url}:{route_port}")
+        client = LLMClient(f"{self.intelligence_base_url}:{route_port}", route_port=route_port)
         return client.summarize(content, system_prompt, max_tokens=max_tokens)
 
 
@@ -164,5 +146,10 @@ class ProxyVLClient:
         self.intelligence_base_url = intelligence_base_url.rstrip("/")
 
     def summarize_media(self, media_path: str, route_port: int, prompt: str) -> str:
-        client = VLClient(f"{self.intelligence_base_url}:{route_port}")
+        client = VLClient(f"{self.intelligence_base_url}:{route_port}", route_port=route_port)
         return client.summarize_media(media_path, prompt)
+
+
+def _extract_route_port(base_url: str) -> int | None:
+    parsed = urlparse(base_url)
+    return parsed.port

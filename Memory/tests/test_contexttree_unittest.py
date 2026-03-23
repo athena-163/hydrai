@@ -1,12 +1,15 @@
 import json
+import os
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from hydrai_memory.contexttree.auth import build_internal_auth_headers
 from hydrai_memory.contexttree.core import ContexTree
 from hydrai_memory.contexttree.prompt_config import load_summary_config, resolve_local_prompt_overrides
+from hydrai_memory.contexttree.summary import load_summary
 
 
 class _FakeEmbedder:
@@ -97,6 +100,37 @@ class PromptConfigTests(unittest.TestCase):
             self.assertEqual(resolved["limits"]["video_max_bytes"], 8192)
 
 
+class AuthTests(unittest.TestCase):
+    def test_secure_mode_uses_route_specific_token(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HYDRAI_SECURITY_MODE": "secure",
+                "HYDRAI_INTELLIGENCE_ROUTE_TOKENS_JSON": json.dumps(
+                    {"61102": {"token_id": "mem-text", "token": "secret-text"}}
+                ),
+            },
+            clear=False,
+        ):
+            headers = build_internal_auth_headers(61102)
+            self.assertEqual(headers["X-Hydrai-Token-Id"], "mem-text")
+            self.assertEqual(headers["X-Hydrai-Token"], "secret-text")
+
+    def test_secure_mode_rejects_missing_route_specific_token(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HYDRAI_SECURITY_MODE": "secure",
+                "HYDRAI_INTELLIGENCE_ROUTE_TOKENS_JSON": json.dumps(
+                    {"61101": {"token_id": "mem-image", "token": "secret-image"}}
+                ),
+            },
+            clear=False,
+        ):
+            with self.assertRaises(ValueError):
+                build_internal_auth_headers(61102)
+
+
 class ContexTreeTests(unittest.TestCase):
     def test_config_builds_embedder_and_limit_values(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -182,6 +216,54 @@ class ContexTreeTests(unittest.TestCase):
             self.assertIn("... 5 more bytes", str(read_result))
             policy = tree._resolve_summary_policy(str(nested))
             self.assertFalse(tree._within_media_limit(str(image_path), "image", policy))
+
+    def test_text_limit_is_byte_bounded_for_multibyte_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            root.mkdir()
+            config_path = root / "contextree.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "intelligence": {
+                            "base_url": "http://127.0.0.1",
+                            "text_port": 61201,
+                            "image_port": 61101,
+                            "video_port": 61201,
+                            "embedder_port": 61100,
+                        },
+                        "limits": {"text_max_bytes": 4, "image_max_bytes": 100, "video_max_bytes": 100},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            text_path = root / "utf8.txt"
+            text_path.write_text("你好世界", encoding="utf-8")
+            tree = ContexTree(str(root), config_path=str(config_path))
+            read_result = tree.read(["utf8.txt"])["utf8.txt"]
+            self.assertEqual(str(read_result), "你\n... 8 more bytes")
+
+    def test_write_text_auto_summarizes_when_summary_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            root.mkdir()
+            tree = ContexTree(str(root), embedder=_FakeEmbedder(), llm_url="http://unused")
+            tree.llm.summarize_text = mock.Mock(return_value="auto summary")
+            tree.write_text("notes/a.txt", "hello world")
+            summary_data = load_summary(str(root / "notes"))
+            self.assertEqual(summary_data["files"]["a.txt"]["text"], "auto summary")
+
+    def test_copy_auto_summarizes_image_when_summary_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            root.mkdir()
+            src = Path(tmp) / "a.jpg"
+            src.write_bytes(b"\xff\xd8" + b"x" * 20)
+            tree = ContexTree(str(root), embedder=_FakeEmbedder(), vl_url="http://unused")
+            tree.vl.summarize_image = mock.Mock(return_value="image summary")
+            tree.copy("media/a.jpg", str(src))
+            read_result = tree.read(["media/a.jpg"])["media/a.jpg"]
+            self.assertEqual(read_result["summary"], "image summary")
 
     def test_maintenance_thread_starts_and_stops(self):
         with tempfile.TemporaryDirectory() as tmp:

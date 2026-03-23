@@ -224,6 +224,14 @@ In the current `ContexTree` port, local `.PROMPT.json` overrides may set:
 2. route ports for `text`, `image`, `video`, `embedder`
 3. per-resource byte limits for `text_max_bytes`, `image_max_bytes`, `video_max_bytes`
 
+For secure mode outbound calls into `Intelligence`, `ContexTree` should not
+guess among unrelated token ids.
+
+Current implementation direction:
+
+1. use one explicit outbound token pair for all `ContexTree -> Intelligence` calls, or
+2. use a per-route token map keyed by target `Intelligence` port
+
 ### 7.7 Byte Limits
 
 Hydrai `ContexTree` should split byte limits by modality.
@@ -243,6 +251,8 @@ Semantics:
 
 This applies both to direct summarize operations and to background maintenance.
 
+Current implementation treats text limits as byte caps, not character counts.
+
 ### 7.8 Maintenance Ownership
 
 Maintenance registration is an upper-level `Memory` decision, not a `ContexTree`
@@ -255,7 +265,19 @@ That means:
 3. `Memory` owns scheduler state and lifecycle
 4. Hydrai should replace AIOS detached per-root daemon processes with service-owned background threads or workers
 
-## 9. Current ContexTree-Intelligence Mapping
+## 9. Immediate Semantic Consistency
+
+Foreground writer operations should not leave newly written files semantically
+blank unless the file type is unsupported.
+
+Current implementation direction:
+
+1. `write_text` auto-summarizes if no explicit summary is provided
+2. `append_text` auto-summarizes if no explicit summary is provided
+3. `copy` auto-summarizes text, image, or video if supported and within limits
+4. unsupported binaries may still remain without semantic summary until later policy handles them
+
+## 10. Current ContexTree-Intelligence Mapping
 
 The current live integration mapping used on this machine is:
 
@@ -267,7 +289,7 @@ The current live integration mapping used on this machine is:
 This mapping is not hardcoded in `ContexTree`. It is carried by config and may
 be overridden per resource.
 
-## 10. Resource Registry
+## 11. Resource Registry
 
 `Memory` should maintain a sandbox-local resource registry, likely in
 `resources.json`.

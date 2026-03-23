@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import math
-import os
 import struct
 
 import httpx
 
+from .auth import build_internal_auth_headers
 from .prompt_config import load_summary_config
 
 try:
@@ -47,27 +46,6 @@ def _vector_dot(vec_a, vec_b) -> float:
     return sum(float(a) * float(b) for a, b in zip(vec_a, vec_b))
 
 
-def _internal_auth_headers() -> dict[str, str]:
-    if os.environ.get("HYDRAI_SECURITY_MODE", "dev").strip().lower() != "secure":
-        return {}
-    token_id = os.environ.get("HYDRAI_INTERNAL_TOKEN_ID", "").strip()
-    token = os.environ.get("HYDRAI_INTERNAL_TOKEN", "").strip()
-    if token_id and token:
-        return {"X-Hydrai-Token-Id": token_id, "X-Hydrai-Token": token}
-    raw = os.environ.get("HYDRAI_INTERNAL_TOKENS_JSON", "").strip()
-    if raw:
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError("invalid HYDRAI_INTERNAL_TOKENS_JSON") from exc
-        if isinstance(parsed, dict):
-            for key in sorted(parsed):
-                value = str(parsed[key]).strip()
-                if value:
-                    return {"X-Hydrai-Token-Id": str(key), "X-Hydrai-Token": value}
-    raise ValueError("secure mode requires outbound Hydrai internal token material")
-
-
 class Embedder:
     """Route-local base64 embedding client."""
 
@@ -89,7 +67,7 @@ class Embedder:
             resp = httpx.post(
                 self.endpoint,
                 json={"input": str(text or "")},
-                headers=_internal_auth_headers(),
+                headers=build_internal_auth_headers(self.route_port),
                 timeout=_TIMEOUT,
             )
             resp.raise_for_status()

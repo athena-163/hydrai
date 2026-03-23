@@ -19,7 +19,8 @@ Current route endpoints:
 2. `POST /v1/embeddings`
 3. `GET /health`
 4. control/help port `61000`
-5. `GET /help` on port `61000`
+5. internal `llama-server` runtimes on `61001+`
+6. `GET /help` on port `61000`
 
 ## Install
 
@@ -78,6 +79,14 @@ able to resolve `llama-server`. On macOS `launchd`, include a `PATH` such as:
 ## Control Port
 
 `Intelligence` reserves port `61000` for service-level discovery and help.
+
+Recommended port grouping:
+
+1. `61000`: control/help
+2. `61001+`: internal `llama-server` runtimes
+3. `61100`: embeddings
+4. `61101+`: public local model routes
+5. `61201+`: public remote model routes
 
 Endpoints:
 

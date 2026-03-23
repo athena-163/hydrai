@@ -139,11 +139,12 @@ class LlamaChatAdapter(BaseAdapter):
         super().__init__(route)
         self._client: httpx.Client | None = None
         self._proc: subprocess.Popen[str] | None = None
-        self._target = f"http://127.0.0.1:{self.route.listen + 1000}"
+        self._target = f"http://127.0.0.1:{_llama_runtime_port(self.route.listen)}"
 
     def startup(self) -> None:
         self._client = httpx.Client(timeout=self.route.limits.timeout_sec)
-        self._target = f"http://127.0.0.1:{self.route.listen + 1000}"
+        runtime_port = _llama_runtime_port(self.route.listen)
+        self._target = f"http://127.0.0.1:{runtime_port}"
         llama_server_bin = _resolve_llama_server_bin()
         cmd = [
             llama_server_bin,
@@ -152,7 +153,7 @@ class LlamaChatAdapter(BaseAdapter):
             "--host",
             "127.0.0.1",
             "--port",
-            str(self.route.listen + 1000),
+            str(runtime_port),
             "-c",
             str(max(self.route.context_k, 1) * 1024),
         ]
@@ -358,6 +359,14 @@ def _resolve_llama_server_bin() -> str:
             return candidate
     raise RuntimeError(
         "llama-server not found in PATH; install llama.cpp or set PATH so launchd/systemd can resolve it"
+    )
+
+
+def _llama_runtime_port(public_port: int) -> int:
+    if 61101 <= public_port <= 61199:
+        return 61000 + (public_port - 61100)
+    raise RuntimeError(
+        f"llama route port {public_port} is outside the supported local-public range 61101-61199"
     )
 
 

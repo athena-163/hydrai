@@ -92,6 +92,9 @@ class RouteRuntime:
                     self._json(400, {"error": "invalid json"})
                 except ValueError:
                     self._json(400, {"error": "invalid content-length"})
+                except Exception:
+                    LOG.exception("unhandled route error on %s", runtime.route.name)
+                    self._json(500, {"error": "internal server error"})
 
             def _read_json(self) -> dict[str, Any]:
                 length = int(self.headers.get("Content-Length", "0") or "0")

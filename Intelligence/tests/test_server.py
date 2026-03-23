@@ -123,6 +123,56 @@ class ServerTests(unittest.TestCase):
                 stopper.start()
                 stopper.join(timeout=5)
 
+    def test_unhandled_route_exception_returns_500_json(self):
+        route = RouteConfig(
+            name="embed",
+            type="embedding",
+            adapter="embedding",
+            listen=6200,
+            model="fake",
+            output_encoding="base64",
+            output_dimension=3,
+            limits=Limits(max_concurrency=1, timeout_sec=5),
+        )
+
+        class _BrokenAdapter:
+            def startup(self):
+                return None
+
+            def shutdown(self):
+                return None
+
+            def health(self):
+                return {"name": "broken"}
+
+            def embeddings(self, _body):
+                raise RuntimeError("boom")
+
+        with (
+            mock.patch("intelligence.server.CONTROL_PORT", 6192),
+            mock.patch("intelligence.server.build_adapter", return_value=_BrokenAdapter()),
+        ):
+            service = IntelligenceService(ServiceConfig(routes=(route,), config_path=""), InternalAuthGate(mode="dev", tokens={}))
+            service.start()
+            try:
+                time.sleep(0.1)
+                req = urllib.request.Request(
+                    "http://127.0.0.1:6200/v1/embeddings",
+                    data=b'{"input":"hello"}',
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(req, timeout=5)
+                self.assertEqual(ctx.exception.code, 500)
+                body = ctx.exception.read().decode()
+                self.assertIn("internal server error", body)
+                ctx.exception.close()
+            finally:
+                stopper = threading.Thread(target=service.stop)
+                stopper.start()
+                stopper.join(timeout=5)
+
 
 if __name__ == "__main__":
     unittest.main()

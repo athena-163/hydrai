@@ -10,7 +10,7 @@ class ConfigTests(unittest.TestCase):
         config_path = Path(__file__).resolve().parents[1] / "Configs" / "config.example.json"
         config = load_config(config_path)
         self.assertEqual(len(config.routes), 6)
-        self.assertEqual(config.routes[0].listen, 6101)
+        self.assertEqual(config.routes[0].listen, 61201)
 
     def test_duplicate_port_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

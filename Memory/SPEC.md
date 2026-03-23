@@ -589,3 +589,218 @@ After this first slice, `Memory/SPEC.md` should next freeze:
 4. `SessionBook` layout and session membership contract
 5. `SkillSet` overlay and filtering contract
 6. `Memory` control and sandbox-facing API inventory
+
+## 15. IdentityState
+
+Hydrai should replace AIOS `AgentFile` with `IdentityState`.
+
+The underlying idea is still good: one durable root per identity that stores
+its self-model, relationship state, session-scoped ongoing notes, memorable
+episodes, and impulse definitions.
+
+### 15.1 Role
+
+`IdentityState` is the canonical durable state container for one sandbox-local
+identity.
+
+It should own:
+
+1. the identity's private core self-description
+2. the identity's outward persona/presentation
+3. relationship state toward other identities
+4. session-scoped ongoing notes
+5. memorable long-term notes
+6. impulse definitions or impulse-local config records
+7. identity-local config metadata
+
+It should not own:
+
+1. live model/runtime process state
+2. pending turn state
+3. session transcript history
+4. cross-sandbox identity state
+
+### 15.2 Naming
+
+Hydrai should stop using `AgentFile` as the primary term.
+
+Canonical Hydrai term:
+
+1. `IdentityState`
+
+Reason:
+
+1. Hydrai uses `identity` consistently across sandbox/session design
+2. `AgentFile` is AIOS-specific and too narrow for human/native identity-like actors
+
+### 15.3 Scope
+
+One `IdentityState` belongs to one sandbox and one identity-like entity.
+
+That entity may be:
+
+1. a normal sandbox identity
+2. a `human/` persona
+3. a `native/` third-party agent persona/manual state
+
+The storage primitive can stay the same across all three categories even if
+their higher-level orchestration differs.
+
+### 15.4 Durable Layout
+
+The AIOS structure is still a good starting point:
+
+```text
+identity_root/
+  config.json
+  identity/
+    SOUL.md
+    PERSONA.md
+  dynamics/
+    self.md
+    other-identity.md
+  ongoing/
+    <session_id>.md
+  memorables/
+    0001.title.md
+  impulses/
+    name.json
+```
+
+Hydrai interpretation:
+
+1. `identity/SOUL.md` is private internal self-state
+2. `identity/PERSONA.md` is the outward social/role expression
+3. `dynamics/` stores subjective relationship state
+4. `ongoing/` stores session-scoped working continuity
+5. `memorables/` stores accumulated memorable notes
+6. `impulses/` stores impulse definitions or opaque impulse payloads
+
+### 15.5 Typed Surface
+
+The AIOS typed API shape is mostly worth keeping.
+
+Hydrai `IdentityState` should likely expose typed operations for:
+
+1. `soul()` / `set_soul()`
+2. `persona()` / `set_persona()`
+3. `dynamic(name)` / `set_dynamic(name, content)`
+4. `ongoing(session_id)` / `set_ongoing(session_id, content)`
+5. `memorable(name)` / `add_memorable(title, content)`
+6. `impulse(name)` / `set_impulse(name, content)` / `delete_impulse(name)`
+7. list helpers such as `get_impulses()`, `get_sessions()`, `get_friends()`
+
+This is a good fit because those storage areas are semantically distinct and
+very stable.
+
+### 15.6 Config
+
+AIOS mostly treated `config.json` as opaque storage with one notable runtime
+section for skill filtering.
+
+Hydrai should keep the same high-level stance:
+
+1. `config.json` is mostly opaque to `IdentityState`
+2. higher layers may reserve specific stable subtrees in it
+
+The main currently known reserved subtree is skill filtering policy.
+
+Hydrai direction:
+
+```json
+{
+  "skills": {
+    "whitelist": [],
+    "blacklist": []
+  }
+}
+```
+
+Rules inherited from AIOS:
+
+1. filtering is by skill name
+2. empty whitelist means allow all by default
+3. non-empty whitelist restricts to listed skills
+4. blacklist is subtractive
+
+This should stay a coarse capability filter, not the place where fine-grained
+session resource permission is enforced.
+
+### 15.7 Relationship To SessionBook
+
+`IdentityState` and `SessionBook` should remain separate.
+
+Division:
+
+1. `SessionBook` owns committed shared session history
+2. `IdentityState.ongoing/<session>.md` owns that identity's session-local continuity notes
+
+This separation is important and should be preserved in Hydrai.
+
+### 15.8 Relationship To ContexTree
+
+Like AIOS `AgentFile`, Hydrai `IdentityState` should likely still be built on
+top of the Hydrai-local `ContexTree`.
+
+That gives:
+
+1. typed file wrappers over a managed semantic tree
+2. built-in `view`, `read`, and search behavior
+3. summary/vector freshness through explicit `sync()`
+
+### 15.9 Query Model
+
+The AIOS `query()` pattern is a good starting point.
+
+High-level return shape should include:
+
+1. `soul`
+2. `persona`
+3. a structural `view`
+4. optional session-specific `ongoing`
+5. optional semantic `results`
+
+Search should focus on:
+
+1. `memorables/`
+2. `dynamics/`
+3. `ongoing/`
+
+It should not waste query bandwidth on:
+
+1. `config.json`
+2. `impulses/`
+
+### 15.10 Evolve Path
+
+The AIOS `evolve()` batch-write pattern is useful and should probably remain.
+
+Purpose:
+
+1. batch durable self-updates after reflection/evolution work
+2. write memorables, dynamics, and ongoing changes together
+3. run a full `sync()` afterward so semantic search is fresh
+
+This fits Hydrai well because `Impulse` is an explicit service and will likely
+need exactly this kind of durable identity-update path later.
+
+### 15.11 What To Keep From AIOS
+
+Keep:
+
+1. the five-bucket structure: identity/dynamics/ongoing/memorables/impulses
+2. `SOUL.md` and `PERSONA.md`
+3. memorable serial naming
+4. ongoing state keyed by session id
+5. typed wrappers plus generic inherited tree operations
+6. batch `evolve()` concept
+
+### 15.12 What To Change For Hydrai
+
+Change:
+
+1. rename the concept to `IdentityState`
+2. keep the implementation local to `Memory`
+3. make the abstraction explicitly valid for normal, human, and native identity-like records
+4. align docs and API language with `identity`, not `agent`
+5. keep config mostly opaque while documenting the skill-filter subtree clearly

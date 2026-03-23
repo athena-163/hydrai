@@ -1,6 +1,5 @@
 import json
 import tempfile
-import threading
 import time
 import unittest
 from pathlib import Path
@@ -69,11 +68,23 @@ class PromptConfigTests(unittest.TestCase):
                 encoding="utf-8",
             )
             ((root / "docs") / ".PROMPT.json").write_text(
-                json.dumps({"prompts": {"image_summary": "docs image"}, "ports": {"image": 61101}}),
+                json.dumps(
+                    {
+                        "prompts": {"image_summary": "docs image"},
+                        "ports": {"image": 61101},
+                        "limits": {"image_max_bytes": 2048},
+                    }
+                ),
                 encoding="utf-8",
             )
             (nested / ".PROMPT.json").write_text(
-                json.dumps({"prompts": {"image_summary": "nested image"}, "ports": {"embedder": 61100}}),
+                json.dumps(
+                    {
+                        "prompts": {"image_summary": "nested image"},
+                        "ports": {"embedder": 61100},
+                        "limits": {"video_max_bytes": 8192},
+                    }
+                ),
                 encoding="utf-8",
             )
             resolved = resolve_local_prompt_overrides(str(root), str(nested))
@@ -82,6 +93,8 @@ class PromptConfigTests(unittest.TestCase):
             self.assertEqual(resolved["ports"]["text"], 61201)
             self.assertEqual(resolved["ports"]["image"], 61101)
             self.assertEqual(resolved["ports"]["embedder"], 61100)
+            self.assertEqual(resolved["limits"]["image_max_bytes"], 2048)
+            self.assertEqual(resolved["limits"]["video_max_bytes"], 8192)
 
 
 class ContexTreeTests(unittest.TestCase):
@@ -123,6 +136,52 @@ class ContexTreeTests(unittest.TestCase):
             image_path.write_bytes(b"\xff\xd8" + b"x" * 20)
             tree = ContexTree(str(root), image_max_bytes=4)
             self.assertFalse(tree._within_media_limit(str(image_path), "image"))
+
+    def test_local_limit_override_is_used_for_read_and_media_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            nested = root / "docs"
+            nested.mkdir(parents=True)
+            config_path = root / "contextree.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "intelligence": {
+                            "base_url": "http://127.0.0.1",
+                            "text_port": 61201,
+                            "image_port": 61101,
+                            "video_port": 61201,
+                            "embedder_port": 61100,
+                        },
+                        "limits": {
+                            "text_max_bytes": 100,
+                            "image_max_bytes": 100,
+                            "video_max_bytes": 100,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (nested / ".PROMPT.json").write_text(
+                json.dumps(
+                    {
+                        "limits": {
+                            "text_max_bytes": 5,
+                            "image_max_bytes": 50,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            text_path = nested / "a.txt"
+            text_path.write_text("0123456789", encoding="utf-8")
+            image_path = nested / "a.jpg"
+            image_path.write_bytes(b"\xff\xd8" + b"x" * 60)
+            tree = ContexTree(str(root), config_path=str(config_path))
+            read_result = tree.read(["docs/a.txt"])["docs/a.txt"]
+            self.assertIn("... 5 more bytes", str(read_result))
+            policy = tree._resolve_summary_policy(str(nested))
+            self.assertFalse(tree._within_media_limit(str(image_path), "image", policy))
 
     def test_maintenance_thread_starts_and_stops(self):
         with tempfile.TemporaryDirectory() as tmp:

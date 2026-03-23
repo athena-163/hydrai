@@ -105,7 +105,12 @@ class VLClient:
             logger.warning("Cannot read media file %s: %s", media_path, exc)
             return ""
 
-        item_type = "image_url" if mime.startswith("image/") or mime.startswith("video/") else "image_url"
+        if mime.startswith("video/"):
+            item_type = "video_url"
+            item_value = {"video_url": {"url": f"data:{mime};base64,{b64data}"}}
+        else:
+            item_type = "image_url"
+            item_value = {"image_url": {"url": f"data:{mime};base64,{b64data}"}}
         payload = {
             "messages": [
                 {
@@ -113,7 +118,7 @@ class VLClient:
                     "content": [
                         {
                             "type": item_type,
-                            "image_url": {"url": f"data:{mime};base64,{b64data}"},
+                            **item_value,
                         },
                         {
                             "type": "text",

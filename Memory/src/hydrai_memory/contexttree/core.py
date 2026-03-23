@@ -128,10 +128,14 @@ class ContexTree:
                 encoding = detect_encoding(abs_path) or "utf-8"
                 try:
                     file_size = os.path.getsize(abs_path)
+                    text_limit = self.text_max_bytes
+                    if self.summary_config is not None:
+                        policy = self._resolve_summary_policy(os.path.dirname(abs_path))
+                        text_limit = policy["limits"]["text_max_bytes"]
                     with open(abs_path, "r", encoding=encoding, errors="replace") as f:
-                        content = f.read(self.text_max_bytes)
-                    if file_size > self.text_max_bytes:
-                        remaining = file_size - self.text_max_bytes
+                        content = f.read(text_limit)
+                    if file_size > text_limit:
+                        remaining = file_size - text_limit
                         content += f"\n... {remaining:,} more bytes"
                     result[rel_path] = content
                 except OSError:
@@ -578,10 +582,10 @@ class ContexTree:
                     if self.llm:
                         new_summary = self._summarize_text_file(full_path, policy)
                 elif is_image_file(full_path):
-                    if self.vl and self._within_media_limit(full_path, "image"):
+                    if self.vl and self._within_media_limit(full_path, "image", policy):
                         new_summary = self._summarize_media_file(full_path, "image", policy)
                 elif is_video_file(full_path):
-                    if self.vl and self._within_media_limit(full_path, "video"):
+                    if self.vl and self._within_media_limit(full_path, "video", policy):
                         new_summary = self._summarize_media_file(full_path, "video", policy)
                 # else: other binary — skip
 
@@ -624,9 +628,12 @@ class ContexTree:
     def _summarize_text_file(self, full_path: str, policy: dict | None = None) -> str:
         """Read a text file up to text_max_bytes and summarize via LLM."""
         encoding = detect_encoding(full_path) or "utf-8"
+        text_limit = self.text_max_bytes
+        if policy is not None:
+            text_limit = policy["limits"]["text_max_bytes"]
         try:
             with open(full_path, "r", encoding=encoding, errors="replace") as f:
-                content = f.read(self.text_max_bytes)
+                content = f.read(text_limit)
         except OSError as e:
             logger.warning("Cannot read file %s: %s", full_path, e)
             return ""
@@ -677,7 +684,15 @@ class ContexTree:
 
     def _resolve_summary_policy(self, dir_path: str) -> dict:
         if self.summary_config is None:
-            return {"prompts": {}, "ports": {}}
+            return {
+                "prompts": {},
+                "ports": {},
+                "limits": {
+                    "text_max_bytes": self.text_max_bytes,
+                    "image_max_bytes": self.image_max_bytes,
+                    "video_max_bytes": self.video_max_bytes,
+                },
+            }
         overrides = resolve_local_prompt_overrides(self.root, dir_path)
         prompts = dict(self.summary_config.prompts)
         prompts.update(overrides.get("prompts", {}))
@@ -688,14 +703,24 @@ class ContexTree:
             "embedder": self.summary_config.embedder_port,
         }
         ports.update(overrides.get("ports", {}))
-        return {"prompts": prompts, "ports": ports}
+        limits = {
+            "text_max_bytes": self.summary_config.text_max_bytes,
+            "image_max_bytes": self.summary_config.image_max_bytes,
+            "video_max_bytes": self.summary_config.video_max_bytes,
+        }
+        limits.update(overrides.get("limits", {}))
+        return {"prompts": prompts, "ports": ports, "limits": limits}
 
-    def _within_media_limit(self, full_path: str, modality: str) -> bool:
+    def _within_media_limit(self, full_path: str, modality: str, policy: dict | None = None) -> bool:
         try:
             file_size = os.path.getsize(full_path)
         except OSError:
             return False
-        limit = self.image_max_bytes if modality == "image" else self.video_max_bytes
+        if policy is not None:
+            limit_key = "image_max_bytes" if modality == "image" else "video_max_bytes"
+            limit = policy["limits"][limit_key]
+        else:
+            limit = self.image_max_bytes if modality == "image" else self.video_max_bytes
         if file_size <= limit:
             return True
         logger.info("Skipping %s summary for oversized file %s (%s > %s)", modality, full_path, file_size, limit)

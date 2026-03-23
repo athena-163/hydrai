@@ -218,6 +218,12 @@ The important Hydrai correction is that route selection must be separated cleanl
 
 The embedding route must not be implicitly derived from the text route.
 
+In the current `ContexTree` port, local `.PROMPT.json` overrides may set:
+
+1. prompt strings
+2. route ports for `text`, `image`, `video`, `embedder`
+3. per-resource byte limits for `text_max_bytes`, `image_max_bytes`, `video_max_bytes`
+
 ### 7.7 Byte Limits
 
 Hydrai `ContexTree` should split byte limits by modality.
@@ -249,7 +255,19 @@ That means:
 3. `Memory` owns scheduler state and lifecycle
 4. Hydrai should replace AIOS detached per-root daemon processes with service-owned background threads or workers
 
-## 8. Resource Registry
+## 9. Current ContexTree-Intelligence Mapping
+
+The current live integration mapping used on this machine is:
+
+1. text summarization -> local `qwen3-4b` on `61102`
+2. image summarization -> local `qwen3-32b-vl` on `61101`
+3. video summarization -> remote `qwen3.5-plus` on `61201`
+4. embeddings -> local `bge-m3` on `61100`
+
+This mapping is not hardcoded in `ContexTree`. It is carried by config and may
+be overridden per resource.
+
+## 10. Resource Registry
 
 `Memory` should maintain a sandbox-local resource registry, likely in
 `resources.json`.

@@ -87,9 +87,9 @@ def resolve_local_prompt_overrides(root: str, dir_path: str) -> dict:
     dir_path = os.path.realpath(dir_path)
     try:
         if os.path.commonpath([root, dir_path]) != root:
-            return {"prompts": {}, "ports": {}}
+            return {"prompts": {}, "ports": {}, "limits": {}}
     except ValueError:
-        return {"prompts": {}, "ports": {}}
+        return {"prompts": {}, "ports": {}, "limits": {}}
 
     rel = os.path.relpath(dir_path, root)
     chain = [root]
@@ -101,23 +101,25 @@ def resolve_local_prompt_overrides(root: str, dir_path: str) -> dict:
 
     merged_prompts: dict[str, str] = {}
     merged_ports: dict[str, int] = {}
+    merged_limits: dict[str, int] = {}
     for folder in chain:
         data = _load_local_prompt_file(os.path.join(folder, PROMPT_FILENAME))
         merged_prompts.update(data.get("prompts", {}))
         merged_ports.update(data.get("ports", {}))
-    return {"prompts": merged_prompts, "ports": merged_ports}
+        merged_limits.update(data.get("limits", {}))
+    return {"prompts": merged_prompts, "ports": merged_ports, "limits": merged_limits}
 
 
 def _load_local_prompt_file(path: str) -> dict:
     if not os.path.isfile(path):
-        return {"prompts": {}, "ports": {}}
+        return {"prompts": {}, "ports": {}, "limits": {}}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
-        return {"prompts": {}, "ports": {}}
+        return {"prompts": {}, "ports": {}, "limits": {}}
     if not isinstance(data, dict):
-        return {"prompts": {}, "ports": {}}
+        return {"prompts": {}, "ports": {}, "limits": {}}
 
     prompts: dict[str, str] = {}
     raw_prompts = data.get("prompts", {})
@@ -133,8 +135,15 @@ def _load_local_prompt_file(path: str) -> dict:
             value = raw_ports.get(key)
             if isinstance(value, int) and 1 <= value <= 65535:
                 ports[key] = value
+    limits: dict[str, int] = {}
+    raw_limits = data.get("limits", {})
+    if isinstance(raw_limits, dict):
+        for key in ("text_max_bytes", "image_max_bytes", "video_max_bytes"):
+            value = raw_limits.get(key)
+            if isinstance(value, int) and value > 0:
+                limits[key] = value
 
-    return {"prompts": prompts, "ports": ports}
+    return {"prompts": prompts, "ports": ports, "limits": limits}
 
 
 def _require_port(section: dict, key: str) -> int:

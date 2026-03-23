@@ -396,7 +396,7 @@ Field intent:
 The current machine is expected to support at least these initial routes:
 
 1. remote `qwen3.5-plus` via API, with image and video support
-2. remote `grok-4.2-beta` via API, with image support and video still unconfirmed
+2. remote `grok-4.20-0309-reasoning` via API, with image support and no direct video input
 3. remote `grok-4.1-fast-reasoning` via API, with image support and no video
 4. local `qwen3-32b-vl` via llama, with 64K context and image support but no video
 5. local `qwen3-4b` via llama, intended for content summarization

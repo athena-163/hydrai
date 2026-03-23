@@ -22,7 +22,7 @@
       "extra_params": {}
     },
     {
-      "name": "grok42-beta",
+      "name": "grok420-reasoning",
       "type": "chat",
       "adapter": "remote",
       "listen": 6102,

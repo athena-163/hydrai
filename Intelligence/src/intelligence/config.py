@@ -124,9 +124,13 @@ def _validate_route(raw: object, idx: int, seen_ports: set[int]) -> RouteConfig:
     )
 
     if route.adapter == "remote":
+        if route.type != "chat":
+            raise ConfigError(f"route {idx}: remote adapter requires type=chat")
         if not route.target.startswith(("http://", "https://")):
             raise ConfigError(f"route {idx}: remote route requires valid target")
     elif route.adapter == "llama":
+        if route.type != "chat":
+            raise ConfigError(f"route {idx}: llama adapter requires type=chat")
         if not route.artifact:
             raise ConfigError(f"route {idx}: llama route requires artifact")
     elif route.adapter == "embedding":
@@ -149,4 +153,3 @@ def _required_int(raw: dict, key: str, idx: int) -> int:
     if not isinstance(value, int):
         raise ConfigError(f"route {idx}: '{key}' must be an int")
     return value
-

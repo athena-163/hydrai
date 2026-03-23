@@ -88,6 +88,8 @@ class RouteRuntime:
                     self._json(500, {"error": str(exc)})
                 except json.JSONDecodeError:
                     self._json(400, {"error": "invalid json"})
+                except ValueError:
+                    self._json(400, {"error": "invalid content-length"})
 
             def _read_json(self) -> dict[str, Any]:
                 length = int(self.headers.get("Content-Length", "0") or "0")
@@ -145,4 +147,3 @@ class IntelligenceService:
     def stop(self) -> None:
         for runtime in reversed(self._runtimes):
             runtime.stop()
-

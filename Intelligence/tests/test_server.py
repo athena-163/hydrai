@@ -19,6 +19,7 @@ class ServerTests(unittest.TestCase):
             type="chat",
             adapter="remote",
             listen=6196,
+            runtime_port=0,
             model="fake",
             limits=Limits(max_concurrency=1, timeout_sec=5),
         )
@@ -27,6 +28,7 @@ class ServerTests(unittest.TestCase):
             type="chat",
             adapter="llama",
             listen=6197,
+            runtime_port=6191,
             model="fake",
             artifact="/tmp/fake.gguf",
             limits=Limits(max_concurrency=1, timeout_sec=5),
@@ -46,12 +48,9 @@ class ServerTests(unittest.TestCase):
             def health(self):
                 return {"name": self.route.name}
 
-        with (
-            mock.patch("intelligence.server.CONTROL_PORT", 6195),
-            mock.patch("intelligence.server.build_adapter", side_effect=lambda route, _backend: _Adapter(route)),
-        ):
+        with mock.patch("intelligence.server.build_adapter", side_effect=lambda route, _backend: _Adapter(route)):
             service = IntelligenceService(
-                ServiceConfig(routes=(route_ok, route_fail), config_path=""),
+                ServiceConfig(control_port=6195, routes=(route_ok, route_fail), config_path=""),
                 InternalAuthGate(mode="dev", tokens={}),
             )
             with self.assertRaises(RuntimeError):
@@ -68,27 +67,27 @@ class ServerTests(unittest.TestCase):
             type="embedding",
             adapter="embedding",
             listen=6198,
+            runtime_port=0,
             model="fake",
             output_encoding="base64",
             output_dimension=3,
             limits=Limits(max_concurrency=1, timeout_sec=5),
         )
-        with mock.patch("intelligence.server.CONTROL_PORT", 6194):
-            service = IntelligenceService(
-                ServiceConfig(routes=(route,), config_path="/Users/zeus/Public/hydrai/Intelligence.json"),
-                InternalAuthGate(mode="dev", tokens={}),
-            )
-            service.start()
-            try:
-                time.sleep(0.1)
-                payload = json.loads(urllib.request.urlopen("http://127.0.0.1:6194/help", timeout=5).read().decode())
-                self.assertEqual(payload["control_port"], 6194)
-                self.assertEqual(payload["config_path"], "/Users/zeus/Public/hydrai/Intelligence.json")
-                self.assertEqual(payload["routes"][0]["listen"], 6198)
-            finally:
-                stopper = threading.Thread(target=service.stop)
-                stopper.start()
-                stopper.join(timeout=5)
+        service = IntelligenceService(
+            ServiceConfig(control_port=6194, routes=(route,), config_path="/Users/zeus/Public/hydrai/Intelligence.json"),
+            InternalAuthGate(mode="dev", tokens={}),
+        )
+        service.start()
+        try:
+            time.sleep(0.1)
+            payload = json.loads(urllib.request.urlopen("http://127.0.0.1:6194/help", timeout=5).read().decode())
+            self.assertEqual(payload["control_port"], 6194)
+            self.assertEqual(payload["config_path"], "/Users/zeus/Public/hydrai/Intelligence.json")
+            self.assertEqual(payload["routes"][0]["listen"], 6198)
+        finally:
+            stopper = threading.Thread(target=service.stop)
+            stopper.start()
+            stopper.join(timeout=5)
 
     def test_invalid_content_length_returns_400(self):
         route = RouteConfig(
@@ -96,32 +95,32 @@ class ServerTests(unittest.TestCase):
             type="embedding",
             adapter="embedding",
             listen=6199,
+            runtime_port=0,
             model="fake",
             output_encoding="base64",
             output_dimension=3,
             limits=Limits(max_concurrency=1, timeout_sec=5),
         )
-        with mock.patch("intelligence.server.CONTROL_PORT", 6193):
-            service = IntelligenceService(ServiceConfig(routes=(route,), config_path=""), InternalAuthGate(mode="dev", tokens={}))
-            service.start()
-            try:
-                time.sleep(0.1)
-                req = urllib.request.Request(
-                    "http://127.0.0.1:6199/v1/embeddings",
-                    data=b'{"input":"hello"}',
-                    headers={"Content-Type": "application/json", "Content-Length": "abc"},
-                    method="POST",
-                )
-                with self.assertRaises(urllib.error.HTTPError) as ctx:
-                    urllib.request.urlopen(req, timeout=5)
-                self.assertEqual(ctx.exception.code, 400)
-                body = ctx.exception.read().decode()
-                self.assertIn("invalid content-length", body)
-                ctx.exception.close()
-            finally:
-                stopper = threading.Thread(target=service.stop)
-                stopper.start()
-                stopper.join(timeout=5)
+        service = IntelligenceService(ServiceConfig(control_port=6193, routes=(route,), config_path=""), InternalAuthGate(mode="dev", tokens={}))
+        service.start()
+        try:
+            time.sleep(0.1)
+            req = urllib.request.Request(
+                "http://127.0.0.1:6199/v1/embeddings",
+                data=b'{"input":"hello"}',
+                headers={"Content-Type": "application/json", "Content-Length": "abc"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(req, timeout=5)
+            self.assertEqual(ctx.exception.code, 400)
+            body = ctx.exception.read().decode()
+            self.assertIn("invalid content-length", body)
+            ctx.exception.close()
+        finally:
+            stopper = threading.Thread(target=service.stop)
+            stopper.start()
+            stopper.join(timeout=5)
 
     def test_unhandled_route_exception_returns_500_json(self):
         route = RouteConfig(
@@ -129,6 +128,7 @@ class ServerTests(unittest.TestCase):
             type="embedding",
             adapter="embedding",
             listen=6200,
+            runtime_port=0,
             model="fake",
             output_encoding="base64",
             output_dimension=3,
@@ -148,11 +148,8 @@ class ServerTests(unittest.TestCase):
             def embeddings(self, _body):
                 raise RuntimeError("boom")
 
-        with (
-            mock.patch("intelligence.server.CONTROL_PORT", 6192),
-            mock.patch("intelligence.server.build_adapter", return_value=_BrokenAdapter()),
-        ):
-            service = IntelligenceService(ServiceConfig(routes=(route,), config_path=""), InternalAuthGate(mode="dev", tokens={}))
+        with mock.patch("intelligence.server.build_adapter", return_value=_BrokenAdapter()):
+            service = IntelligenceService(ServiceConfig(control_port=6192, routes=(route,), config_path=""), InternalAuthGate(mode="dev", tokens={}))
             service.start()
             try:
                 time.sleep(0.1)

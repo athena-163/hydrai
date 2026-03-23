@@ -23,6 +23,7 @@ class RouteConfig:
     type: str
     adapter: str
     listen: int
+    runtime_port: int
     model: str
     limits: Limits
     target: str = ""
@@ -40,6 +41,7 @@ class RouteConfig:
 
 @dataclass(frozen=True)
 class ServiceConfig:
+    control_port: int
     routes: tuple[RouteConfig, ...]
     config_path: str = ""
 
@@ -55,14 +57,17 @@ def load_config(path: str | Path) -> ServiceConfig:
 
     if not isinstance(data, dict):
         raise ConfigError("top-level config must be an object")
+    control_port = data.get("control_port", 61000)
+    if not isinstance(control_port, int) or control_port < 1024 or control_port > 65535:
+        raise ConfigError("'control_port' must be an int in 1024-65535")
     routes = data.get("routes")
     if not isinstance(routes, list) or not routes:
         raise ConfigError("'routes' must be a non-empty array")
     validated: list[RouteConfig] = []
-    seen_ports: set[int] = set()
+    seen_ports: set[int] = {control_port}
     for idx, raw in enumerate(routes):
         validated.append(_validate_route(raw, idx, seen_ports))
-    return ServiceConfig(routes=tuple(validated), config_path=str(path))
+    return ServiceConfig(control_port=control_port, routes=tuple(validated), config_path=str(path))
 
 
 def _validate_route(raw: object, idx: int, seen_ports: set[int]) -> RouteConfig:
@@ -109,6 +114,7 @@ def _validate_route(raw: object, idx: int, seen_ports: set[int]) -> RouteConfig:
         type=route_type,
         adapter=adapter,
         listen=listen,
+        runtime_port=int(raw.get("runtime_port", 0) or 0),
         model=model,
         target=str(raw.get("target", "")),
         key_env=str(raw.get("key_env", "")),
@@ -134,6 +140,9 @@ def _validate_route(raw: object, idx: int, seen_ports: set[int]) -> RouteConfig:
             raise ConfigError(f"route {idx}: llama adapter requires type=chat")
         if not route.artifact:
             raise ConfigError(f"route {idx}: llama route requires artifact")
+        if route.runtime_port < 1024 or route.runtime_port > 65535 or route.runtime_port in seen_ports:
+            raise ConfigError(f"route {idx}: llama route requires unique runtime_port in 1024-65535")
+        seen_ports.add(route.runtime_port)
     elif route.adapter == "embedding":
         if route.type != "embedding":
             raise ConfigError(f"route {idx}: embedding adapter requires type=embedding")

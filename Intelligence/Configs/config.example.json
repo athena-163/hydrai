@@ -1,4 +1,5 @@
 {
+  "control_port": 61000,
   "routes": [
     {
       "name": "qwen35-plus",
@@ -68,6 +69,7 @@
       "type": "chat",
       "adapter": "llama",
       "listen": 61101,
+      "runtime_port": 61001,
       "model": "qwen3-32b-vl",
       "artifact": "/Users/zeus/.local/share/models/Huihui-Qwen3-VL-32B-Instruct-abliterated.Q4_K_M.gguf",
       "mmproj": "/Users/zeus/.local/share/models/Huihui-Qwen3-VL-32B-Instruct-abliterated.mmproj-f16.gguf",
@@ -88,6 +90,7 @@
       "type": "chat",
       "adapter": "llama",
       "listen": 61102,
+      "runtime_port": 61002,
       "model": "qwen3-4b",
       "artifact": "/Users/zeus/.local/share/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
       "think": ["off", "low", "mid"],

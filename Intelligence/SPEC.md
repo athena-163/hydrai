@@ -140,6 +140,8 @@ Current convention:
 1. `Intelligence` ports should use the `61xxx` range
 2. port assignment is explicit in config
 3. each route is independently bindable, health-checkable, and limitable
+4. top-level `control_port` is config-driven
+5. `llama` routes must declare their internal `runtime_port` explicitly
 
 Examples:
 

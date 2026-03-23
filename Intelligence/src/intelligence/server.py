@@ -22,7 +22,6 @@ from .config import RouteConfig, ServiceConfig
 from .embedding import EmbeddingBackend
 
 LOG = logging.getLogger("intelligence.server")
-CONTROL_PORT = 61000
 
 
 class RouteRuntime:
@@ -149,7 +148,7 @@ class IntelligenceService:
         class ControlHandler(BaseHTTPRequestHandler):
             def do_GET(self):
                 if self.path == "/health":
-                    self._json(200, {"status": "ok", "service": "intelligence", "port": CONTROL_PORT})
+                    self._json(200, {"status": "ok", "service": "intelligence", "port": service._config.control_port})
                     return
                 if self.path == "/help":
                     self._json(200, service._help_payload())
@@ -165,14 +164,14 @@ class IntelligenceService:
                 self.wfile.write(body)
 
             def log_message(self, fmt: str, *args):
-                LOG.info("[control:%s] " + fmt, CONTROL_PORT, *args)
+                LOG.info("[control:%s] " + fmt, service._config.control_port, *args)
 
         return ControlHandler
 
     def _help_payload(self) -> dict[str, Any]:
         return {
             "service": "Hydrai Intelligence",
-            "control_port": CONTROL_PORT,
+            "control_port": self._config.control_port,
             "security_mode": self._auth_gate.mode,
             "config_path": self._config.config_path,
             "workspace_hint": os.path.expanduser("~/Public/hydrai"),
@@ -198,6 +197,7 @@ class IntelligenceService:
                     "modalities": runtime.route.modalities,
                     "context_k": runtime.route.context_k,
                     "max_concurrency": runtime.route.limits.max_concurrency,
+                    "runtime_port": runtime.route.runtime_port if runtime.route.adapter == "llama" else 0,
                 }
                 for runtime in self._runtimes
             ],
@@ -206,10 +206,10 @@ class IntelligenceService:
     def start(self) -> None:
         started: list[RouteRuntime] = []
         try:
-            self._control_server = ThreadingHTTPServer(("127.0.0.1", CONTROL_PORT), self._make_control_handler())
+            self._control_server = ThreadingHTTPServer(("127.0.0.1", self._config.control_port), self._make_control_handler())
             self._control_thread = threading.Thread(target=self._control_server.serve_forever, daemon=True, name="intelligence-control")
             self._control_thread.start()
-            LOG.info("started Intelligence control server on :%s", CONTROL_PORT)
+            LOG.info("started Intelligence control server on :%s", self._config.control_port)
             for runtime in self._runtimes:
                 runtime.start()
                 started.append(runtime)
@@ -238,4 +238,4 @@ class IntelligenceService:
             self._control_server.server_close()
             self._control_server = None
             self._control_thread = None
-            LOG.info("stopped Intelligence control server on :%s", CONTROL_PORT)
+            LOG.info("stopped Intelligence control server on :%s", self._config.control_port)

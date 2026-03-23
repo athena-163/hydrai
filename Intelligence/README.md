@@ -18,9 +18,9 @@ Current route endpoints:
 1. `POST /v1/chat/completions`
 2. `POST /v1/embeddings`
 3. `GET /health`
-4. control/help port `61000`
-5. internal `llama-server` runtimes on `61001+`
-6. `GET /help` on port `61000`
+4. configurable control/help port
+5. configurable internal `llama-server` runtime ports
+6. `GET /help` on the configured control port
 
 ## Install
 
@@ -78,7 +78,7 @@ able to resolve `llama-server`. On macOS `launchd`, include a `PATH` such as:
 
 ## Control Port
 
-`Intelligence` reserves port `61000` for service-level discovery and help.
+`Intelligence` uses top-level `control_port` for service-level discovery and help.
 
 Recommended port grouping:
 
@@ -88,10 +88,16 @@ Recommended port grouping:
 4. `61101+`: public local model routes
 5. `61201+`: public remote model routes
 
+These are conventions, not hardcoded values. Actual deployment uses:
+
+1. top-level `control_port`
+2. per-route `listen`
+3. per-route `runtime_port` for `llama` adapters
+
 Endpoints:
 
-1. `GET http://127.0.0.1:61000/health`
-2. `GET http://127.0.0.1:61000/help`
+1. `GET http://127.0.0.1:<control_port>/health`
+2. `GET http://127.0.0.1:<control_port>/help`
 
 `/help` returns:
 

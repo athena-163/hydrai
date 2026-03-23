@@ -298,6 +298,264 @@ At high level, each resource record should eventually capture:
 
 1. `resource_id`
 2. `type`
+
+## 12. SessionBook
+
+Hydrai should keep `SessionBook` as the durable session-log primitive, but with
+cleaner domain language and clearer service ownership than AIOS.
+
+The AIOS `SessionBook` core is mostly good. The important Hydrai work is to:
+
+1. keep the append/rotate/query model
+2. align terminology with Hydrai nouns
+3. keep pending-turn state out of `SessionBook`
+4. keep all implementation local to `Memory`
+
+### 12.1 Role
+
+`SessionBook` is the canonical durable log for one sandbox-local session.
+
+It should own:
+
+1. committed turn history
+2. chapter segmentation and chapter summaries
+3. session-level summary
+4. session participant policy
+5. session resource attachment policy
+6. committed attachment registry/state inside the session root
+
+It should not own:
+
+1. pending confirm/retry/rewind state
+2. routing decisions
+3. model execution policy
+4. native-provider continuity sidecars
+
+Those remain upper-level concerns for `Nerve`, `Brain`, or future orchestration
+layers.
+
+### 12.2 Session Scope
+
+Hydrai sessions are sandbox-local.
+
+Rules:
+
+1. one `SessionBook` belongs to one sandbox
+2. a session may include identities, `human/`, and `native/` participants from that same sandbox
+3. no session crosses sandbox boundaries
+
+### 12.3 Durable Layout
+
+The AIOS layout is still sound as a starting point:
+
+```text
+session_root/
+  .SUMMARY.json
+  config.json
+  000000.log
+  000001.log
+  ...
+  attachments/
+    0001.jpg
+    0002.pdf
+```
+
+Where:
+
+1. `.SUMMARY.json` is ContexTree-managed semantic state
+2. `config.json` is session metadata/policy
+3. `NNNNNN.log` files are append-only chapters
+4. `attachments/` stores committed imported files for that session
+
+### 12.4 Hydrai Naming Cleanup
+
+AIOS `SessionBook` uses `agents` and `mounted`.
+
+For Hydrai, the clean external/domain language should be:
+
+1. `identities` instead of `agents`
+2. `resources` instead of `mounted`
+
+Reason:
+
+1. a session participant in Hydrai is always treated as an identity/persona
+2. mounted context-like objects are now broadly `Resource`
+
+Direction for Hydrai config shape:
+
+```json
+{
+  "channel": "",
+  "identities": {
+    "zeus": "rw",
+    "athena": "rw",
+    "codex": "ro"
+  },
+  "resources": {
+    "workspace-main": "rw",
+    "reference-notes": "ro"
+  },
+  "brain": {},
+  "attachments": {
+    "next_serial": 1
+  },
+  "limits": {}
+}
+```
+
+AIOS compatibility may still be handled during migration or load, but Hydrai
+should not keep the older nouns as the preferred contract.
+
+### 12.5 Permission Model
+
+The AIOS two-axis permission idea should be kept.
+
+Rules:
+
+1. session participant mode is one axis: `ro` or `rw`
+2. attached resource mode is another axis: `ro` or `rw`
+3. effective write requires both axes to allow write
+4. effective read requires participant presence plus resource presence
+
+`SessionBook` stores this policy.
+`Brain` or the higher execution layer computes/enforces the effective access at
+runtime.
+
+### 12.6 Chapters
+
+The AIOS chapter model should be preserved.
+
+Requirements:
+
+1. chapters are zero-padded sequential `NNNNNN.log`
+2. they are append-only plain text
+3. turns are separated by `---`
+4. the active chapter is the highest-numbered unsummarized chapter
+5. closed chapters receive durable semantic summary state
+
+### 12.7 Rotation And Recovery
+
+The AIOS rotation model is good and should remain the basis for Hydrai.
+
+Requirements:
+
+1. auto-rotate when active chapter size reaches `max_chapter_bytes`
+2. allow manual break only above `min_break_bytes`
+3. deferred recovery is acceptable
+4. recovery should summarize unsummarized non-active chapters
+5. read-only calls should not trigger recovery implicitly
+
+This fits Hydrai well because:
+
+1. committed state stays durable and compact
+2. session reads stay cheap
+3. write paths already pay the summarization cost when needed
+
+### 12.8 Query Model
+
+The AIOS `query()` shape is also mostly correct.
+
+The important contract is:
+
+1. always return recent usable conversation context
+2. combine prior summaries with recent raw turns under size budgets
+3. optionally return semantic search results across summarized chapters
+4. always return current participant/resource policy snapshot
+
+Hydrai direction:
+
+1. keep the recent-raw plus prior-summary budget model
+2. keep optional semantic search over chapter summaries
+3. rename returned config maps to `identities` and `resources`
+
+### 12.9 Attachments
+
+The AIOS attachment model is worth keeping with one important simplification.
+
+Keep:
+
+1. session-local `attachments/` folder
+2. serial tag allocation through `attachments.next_serial`
+3. marker injection into the chapter log
+4. ContexTree-backed semantic summary state for attachments
+
+Hydrai-specific interpretation:
+
+1. attachment import becomes part of committed session state
+2. attachment summaries belong only in ContexTree-managed `.SUMMARY.json`
+3. no separate attachment sidecar metadata is needed in v1
+
+Because Hydrai `ContexTree.copy()` now auto-summarizes supported file types when
+no summary is supplied, the old AIOS async attachment-summary behavior is no
+longer required as a default design requirement.
+
+Hydrai direction:
+
+1. `attach()` should commit the file and its marker in one durable operation
+2. if summary is omitted, supported text/image/video files should gain semantic state immediately through ContexTree
+3. oversized or unsupported binaries may remain without semantic summary
+4. extra async enrichment should be treated as optional future optimization, not core correctness
+
+### 12.10 Config Fields
+
+At high level, `SessionBook/config.json` should carry:
+
+1. `channel`
+2. `identities`
+3. `resources`
+4. `brain`
+5. `attachments`
+6. `limits`
+7. optionally a human-facing session `name`
+
+Interpretation:
+
+1. `channel` is opaque transport binding metadata
+2. `brain` is opaque execution/worker metadata
+3. `attachments.next_serial` is allocator state
+4. `limits` overrides constructor/runtime defaults
+
+### 12.11 Ownership Boundary With Nerve
+
+This should be explicit in Hydrai:
+
+1. committed conversation state belongs in `SessionBook`
+2. pending unconfirmed turns belong outside `SessionBook`
+3. confirm/retry/rewind state belongs outside `SessionBook`
+
+That matches the Hydrai trust/control split already recorded at the top level.
+
+### 12.12 Relationship To ContexTree
+
+Hydrai `SessionBook` should still be built on top of the Hydrai-local
+`ContexTree`.
+
+That means:
+
+1. chapter summaries live in ContexTree summary state
+2. session summary lives in ContexTree summary state
+3. attachment summaries live in ContexTree summary state
+4. `view`, `read`, and semantic search may continue delegating to ContexTree where appropriate
+
+### 12.13 What To Keep From AIOS
+
+Keep:
+
+1. chapter naming and append format
+2. rotation and deferred recovery
+3. budgeted `query()` assembly
+4. session-local attachment serial allocation
+5. ContexTree-backed summaries and search
+
+### 12.14 What To Change For Hydrai
+
+Change:
+
+1. move implementation into `Memory`, not a shared repo-wide lib
+2. rename external nouns from `agents`/`mounted` to `identities`/`resources`
+3. make pending-turn state explicitly out of scope
+4. treat immediate semantic consistency for attachments as the default expectation
+5. keep service/API language aligned with Hydrai's sandbox-local session model
 3. backing path or locator
 4. ownership/sandbox scope
 5. mount policy or access mode

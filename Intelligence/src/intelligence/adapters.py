@@ -37,6 +37,17 @@ class UpstreamError(IntelligenceError):
         self.payload = payload
 
 
+def _request_json(client: httpx.Client, method: str, url: str, *, headers: dict[str, str] | None = None, json_body: dict[str, Any] | None = None) -> tuple[int, Any]:
+    try:
+        response = client.request(method, url, headers=headers, json=json_body)
+    except httpx.HTTPError as exc:
+        raise UpstreamError(502, {"error": f"upstream request failed: {exc}"}) from exc
+    data = _json_or_text(response)
+    if response.status_code >= 400:
+        raise UpstreamError(response.status_code, data)
+    return response.status_code, data
+
+
 def build_adapter(route: RouteConfig, embedding_backend: EmbeddingBackend) -> "BaseAdapter":
     if route.adapter == "remote":
         return RemoteChatAdapter(route)
@@ -93,10 +104,13 @@ class RemoteChatAdapter(BaseAdapter):
 
         if _is_xai_target(self.route.target) and search:
             upstream_url, payload = _build_xai_responses_request(self.route, body)
-            response = self._client.post(upstream_url, headers=_build_auth_headers(self.route), json=payload)
-            data = _json_or_text(response)
-            if response.status_code >= 400:
-                raise UpstreamError(response.status_code, data)
+            _status, data = _request_json(
+                self._client,
+                "POST",
+                upstream_url,
+                headers=_build_auth_headers(self.route),
+                json_body=payload,
+            )
             return 200, _translate_xai_responses_to_chat(data, self.route.model)
 
         payload = dict(body)
@@ -107,15 +121,13 @@ class RemoteChatAdapter(BaseAdapter):
         if requested_think != "off":
             payload["reasoning_effort"] = requested_think
 
-        response = self._client.post(
+        return _request_json(
+            self._client,
+            "POST",
             self.route.target.rstrip("/") + "/v1/chat/completions",
             headers=_build_auth_headers(self.route),
-            json=payload,
+            json_body=payload,
         )
-        data = _json_or_text(response)
-        if response.status_code >= 400:
-            raise UpstreamError(response.status_code, data)
-        return response.status_code, data
 
 
 class LlamaChatAdapter(BaseAdapter):
@@ -180,11 +192,12 @@ class LlamaChatAdapter(BaseAdapter):
         if requested_think != "off":
             payload.setdefault("extra_body", {})
             payload["extra_body"]["reasoning_effort"] = requested_think
-        response = self._client.post(self._target + "/v1/chat/completions", json=payload)
-        data = _json_or_text(response)
-        if response.status_code >= 400:
-            raise UpstreamError(response.status_code, data)
-        return response.status_code, data
+        return _request_json(
+            self._client,
+            "POST",
+            self._target + "/v1/chat/completions",
+            json_body=payload,
+        )
 
 
 class EmbeddingAdapter(BaseAdapter):
@@ -345,4 +358,3 @@ def _validate_modalities(route: RouteConfig, body: dict[str, Any]) -> None:
                 raise UnsupportedFeatureError(f"image input unsupported on route {route.name}")
             if item_type == "video_url" and route.modalities.get("video_kb", 0) <= 0:
                 raise UnsupportedFeatureError(f"video input unsupported on route {route.name}")
-

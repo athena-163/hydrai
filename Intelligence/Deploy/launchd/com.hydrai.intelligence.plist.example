@@ -14,6 +14,8 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>HYDRAI_SECURITY_MODE</key>
     <string>dev</string>
     <key>XAI_API_KEY</key>

@@ -31,8 +31,8 @@ class RouteRuntime:
         self.auth_gate = auth_gate
         self.limiter = RouteLimiter(route.limits.max_concurrency)
         self.adapter = build_adapter(route, embedding_backend)
-        self.server = ThreadingHTTPServer(("127.0.0.1", route.listen), self._make_handler())
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name=f"route-{route.listen}")
+        self.server: ThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
 
     def _make_handler(self):
         runtime = self
@@ -116,12 +116,17 @@ class RouteRuntime:
 
     def start(self) -> None:
         self.adapter.startup()
+        self.server = ThreadingHTTPServer(("127.0.0.1", self.route.listen), self._make_handler())
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name=f"route-{self.route.listen}")
         self.thread.start()
         LOG.info("started route %s on :%s", self.route.name, self.route.listen)
 
     def stop(self) -> None:
-        self.server.shutdown()
-        self.server.server_close()
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+            self.server = None
+        self.thread = None
         self.adapter.shutdown()
         LOG.info("stopped route %s on :%s", self.route.name, self.route.listen)
 
@@ -132,8 +137,8 @@ class IntelligenceService:
         self._auth_gate = auth_gate
         embedding_backend = EmbeddingBackend()
         self._runtimes = [RouteRuntime(route, auth_gate, embedding_backend) for route in config.routes]
-        self._control_server = ThreadingHTTPServer(("127.0.0.1", CONTROL_PORT), self._make_control_handler())
-        self._control_thread = threading.Thread(target=self._control_server.serve_forever, daemon=True, name="intelligence-control")
+        self._control_server: ThreadingHTTPServer | None = None
+        self._control_thread: threading.Thread | None = None
 
     def _make_control_handler(self):
         service = self
@@ -198,26 +203,36 @@ class IntelligenceService:
     def start(self) -> None:
         started: list[RouteRuntime] = []
         try:
+            self._control_server = ThreadingHTTPServer(("127.0.0.1", CONTROL_PORT), self._make_control_handler())
+            self._control_thread = threading.Thread(target=self._control_server.serve_forever, daemon=True, name="intelligence-control")
             self._control_thread.start()
             LOG.info("started Intelligence control server on :%s", CONTROL_PORT)
             for runtime in self._runtimes:
                 runtime.start()
                 started.append(runtime)
         except Exception:
-            for runtime in reversed(started):
+            for runtime in reversed(self._runtimes):
                 runtime.stop()
-            self._control_server.shutdown()
-            self._control_server.server_close()
+            if self._control_server is not None:
+                self._control_server.shutdown()
+                self._control_server.server_close()
+                self._control_server = None
+            self._control_thread = None
             raise
 
     def wait(self) -> None:
-        self._control_thread.join()
+        if self._control_thread is not None:
+            self._control_thread.join()
         for runtime in self._runtimes:
-            runtime.thread.join()
+            if runtime.thread is not None:
+                runtime.thread.join()
 
     def stop(self) -> None:
         for runtime in reversed(self._runtimes):
             runtime.stop()
-        self._control_server.shutdown()
-        self._control_server.server_close()
-        LOG.info("stopped Intelligence control server on :%s", CONTROL_PORT)
+        if self._control_server is not None:
+            self._control_server.shutdown()
+            self._control_server.server_close()
+            self._control_server = None
+            self._control_thread = None
+            LOG.info("stopped Intelligence control server on :%s", CONTROL_PORT)

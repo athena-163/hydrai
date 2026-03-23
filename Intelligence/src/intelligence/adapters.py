@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -82,14 +83,17 @@ class BaseAdapter:
 
 
 class RemoteChatAdapter(BaseAdapter):
-    def __post_init__(self):
-        self._client = httpx.Client(timeout=self.route.limits.timeout_sec)
+    def __init__(self, route: RouteConfig):
+        super().__init__(route)
+        self._client: httpx.Client | None = None
 
     def startup(self) -> None:
         self._client = httpx.Client(timeout=self.route.limits.timeout_sec)
 
     def shutdown(self) -> None:
-        self._client.close()
+        if self._client is not None:
+            self._client.close()
+            self._client = None
 
     def chat(self, body: dict[str, Any]) -> tuple[int, Any]:
         requested_think = str(body.get("think", "off"))
@@ -131,16 +135,18 @@ class RemoteChatAdapter(BaseAdapter):
 
 
 class LlamaChatAdapter(BaseAdapter):
-    def __post_init__(self):
-        self._client = httpx.Client(timeout=self.route.limits.timeout_sec)
+    def __init__(self, route: RouteConfig):
+        super().__init__(route)
+        self._client: httpx.Client | None = None
         self._proc: subprocess.Popen[str] | None = None
         self._target = f"http://127.0.0.1:{self.route.listen + 1000}"
 
     def startup(self) -> None:
         self._client = httpx.Client(timeout=self.route.limits.timeout_sec)
         self._target = f"http://127.0.0.1:{self.route.listen + 1000}"
+        llama_server_bin = _resolve_llama_server_bin()
         cmd = [
-            "llama-server",
+            llama_server_bin,
             "-m",
             self.route.artifact,
             "--host",
@@ -161,13 +167,16 @@ class LlamaChatAdapter(BaseAdapter):
         _wait_for_http(self._target + "/health", timeout_sec=30)
 
     def shutdown(self) -> None:
-        self._client.close()
+        if self._client is not None:
+            self._client.close()
+            self._client = None
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:
                 self._proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+        self._proc = None
 
     def health(self) -> dict[str, Any]:
         data = super().health()
@@ -338,6 +347,18 @@ def _check_http(url: str) -> bool:
             return client.get(url).status_code < 500
     except Exception:
         return False
+
+
+def _resolve_llama_server_bin() -> str:
+    resolved = shutil.which("llama-server")
+    if resolved:
+        return resolved
+    for candidate in ("/opt/homebrew/bin/llama-server", "/usr/local/bin/llama-server"):
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise RuntimeError(
+        "llama-server not found in PATH; install llama.cpp or set PATH so launchd/systemd can resolve it"
+    )
 
 
 def _validate_modalities(route: RouteConfig, body: dict[str, Any]) -> None:

@@ -68,6 +68,13 @@ Provider keys:
 1. `XAI_API_KEY`
 2. `ALIBABA_API_KEY`
 
+For local `llama-server` routes, the service manager environment must also be
+able to resolve `llama-server`. On macOS `launchd`, include a `PATH` such as:
+
+```bash
+/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+```
+
 ## Control Port
 
 `Intelligence` reserves port `61000` for service-level discovery and help.

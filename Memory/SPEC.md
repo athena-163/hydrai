@@ -1281,3 +1281,68 @@ At a rough level, `Brain` should eventually receive:
 
 By default prompt-facing systems should prefer resource ids and summaries rather
 than raw absolute paths.
+
+### 18.10 Initial Library Surface
+
+The current `Memory` implementation should expose two internal library surfaces
+before the full HTTP service exists:
+
+1. `ResourceRegistry`
+2. `MemorySandboxAPI`
+
+`ResourceRegistry` should own:
+
+1. register
+2. unregister
+3. get
+4. list
+5. default maintenance interval update
+6. maintenance reconciliation
+
+`MemorySandboxAPI` should own generic file-tree operations over sandbox-scoped
+targets.
+
+### 18.11 Initial Sandbox API Shape
+
+The current generic target families should be:
+
+1. `resource`
+2. `identity`
+3. `session`
+4. optionally `human`
+5. optionally `native`
+
+The initial generic operations should be:
+
+1. `view`
+2. `search`
+3. `read`
+4. `write`
+5. `append`
+6. `delete`
+
+Read-only operations should work for:
+
+1. registered resources
+2. identity folders
+3. session folders
+
+Write operations may also work over those same tree-backed targets.
+
+### 18.12 Access Boundary At This Layer
+
+At this `Memory` library layer, policy should remain intentionally narrow.
+
+This layer should enforce:
+
+1. a sandbox-scoped caller may only access its associated sandbox durable subtree
+2. a sandbox-scoped caller may only access registered resource roots that stay inside its associated sandbox-space path
+3. a system-space caller may access any sandbox
+
+This layer should not enforce:
+
+1. per-session mounted-resource policy
+2. identity visibility policy
+3. writable-vs-readonly session semantics
+
+Those are higher-level `Brain` or service-control concerns.

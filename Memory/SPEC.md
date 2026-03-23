@@ -676,6 +676,34 @@ Hydrai interpretation:
 5. `memorables/` stores accumulated memorable notes
 6. `impulses/` stores impulse definitions or opaque impulse payloads
 
+Hydrai refinement:
+
+1. for normal identities, the full structure may be used
+2. `human/` and `native/` records may stay much lighter at the `Memory` top level
+3. those lighter categories do not need to force full `IdentityState` semantics in v1
+
+### 15.4.1 SOUL vs PERSONA
+
+This should be explicit in Hydrai:
+
+1. `SOUL.md` is self-only internal state
+2. `PERSONA.md` is the outward presentation layer
+3. when one identity needs another identity's social representation, higher layers should load `PERSONA.md`, not `SOUL.md`
+4. `Brain` may load both for the identity it is executing as
+
+### 15.4.2 Dynamics Self File
+
+Hydrai should keep the AIOS convention of a reserved self-dynamics file.
+
+Direction:
+
+1. use `self.md`
+2. treat it as the reserved self-reflection/self-state relationship file
+3. `get_friends()` should exclude it
+
+`self.md` is clearer and more stable than `me.md` because it reads as a stable
+system noun instead of a speaker-relative pronoun.
+
 ### 15.5 Typed Surface
 
 The AIOS typed API shape is mostly worth keeping.
@@ -737,6 +765,11 @@ Division:
 
 This separation is important and should be preserved in Hydrai.
 
+Hydrai refinement:
+
+1. `ongoing/` is keyed strictly by `session_id`
+2. it should be treated as the set of session-local continuity notes for all involved sessions of that identity
+
 ### 15.8 Relationship To ContexTree
 
 Like AIOS `AgentFile`, Hydrai `IdentityState` should likely still be built on
@@ -759,6 +792,12 @@ High-level return shape should include:
 3. a structural `view`
 4. optional session-specific `ongoing`
 5. optional semantic `results`
+
+Rules:
+
+1. `query()` should require either `query_embed` or `query_text`
+2. `results` should not be returned for a query-less call
+3. if both are supplied, `query_embed` wins
 
 Search should focus on:
 
@@ -784,6 +823,31 @@ Purpose:
 This fits Hydrai well because `Impulse` is an explicit service and will likely
 need exactly this kind of durable identity-update path later.
 
+Rules:
+
+1. `evolve()` is additive/update-only
+2. `evolve()` should not imply delete semantics in v1
+
+### 15.10.1 Memorables Titles
+
+One point worth locking for implementation:
+
+1. callers should not need to pre-sanitize memorable titles
+2. `add_memorable(title, content)` should normalize the title into a safe filename slug
+3. the stored filename still keeps the serial prefix form: `0001.safe-title.md`
+
+This is cleaner than forcing every caller to pass an already filesystem-safe token.
+
+### 15.10.2 Impulses
+
+Impulse payload handling is intentionally deferred.
+
+For now:
+
+1. `impulses/` stays out of the implementation focus
+2. detailed impulse payload semantics should be designed with the `Impulse` service later
+3. `IdentityState` implementation may omit typed impulse behavior in the first pass if needed
+
 ### 15.11 What To Keep From AIOS
 
 Keep:
@@ -804,3 +868,6 @@ Change:
 3. make the abstraction explicitly valid for normal, human, and native identity-like records
 4. align docs and API language with `identity`, not `agent`
 5. keep config mostly opaque while documenting the skill-filter subtree clearly
+6. treat `SOUL` as self-only and `PERSONA` as outward-facing
+7. normalize memorable titles instead of requiring pre-sanitized tokens
+8. leave impulse semantics deferred to the `Impulse` service design

@@ -1,0 +1,18 @@
+[Unit]
+Description=Hydrai Intelligence
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hydrai/Intelligence
+Environment=HYDRAI_SECURITY_MODE=secure
+Environment=XAI_API_KEY=REPLACE_ME
+Environment=ALIBABA_API_KEY=REPLACE_ME
+ExecStart=/usr/local/bin/hydrai-intelligence --config /opt/hydrai/Intelligence/config.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

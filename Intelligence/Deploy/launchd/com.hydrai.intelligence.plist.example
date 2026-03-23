@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydrai.intelligence</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/hydrai-intelligence</string>
+    <string>--config</string>
+    <string>/Users/zeus/Codebase/hydrai/Intelligence/Configs/config.example.json</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HYDRAI_SECURITY_MODE</key>
+    <string>dev</string>
+    <key>XAI_API_KEY</key>
+    <string>REPLACE_ME</string>
+    <key>ALIBABA_API_KEY</key>
+    <string>REPLACE_ME</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/zeus/Codebase/hydrai/Intelligence</string>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/hydrai-intelligence.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/hydrai-intelligence.err.log</string>
+</dict>
+</plist>

@@ -1048,3 +1048,236 @@ Change:
 2. use Hydrai-local `ContexTree`, not an external shared library
 3. treat global `root/skills/` as the durable system-space storage root
 4. keep identity and sandbox visibility filtering outside the `SkillSet` library
+
+## 17. Service-Layer Assembly Rough Picture
+
+With the four internal durable primitives now in place:
+
+1. `ContexTree`
+2. `SessionBook`
+3. `IdentityState`
+4. `SkillSet`
+
+the remaining `Memory` work is the service layer that owns and coordinates them.
+
+At a rough level, that service layer should cover:
+
+1. `Resource` registry and maintenance
+2. identity management
+3. session management
+4. `Brain`-facing tool APIs
+
+### 17.1 Resource
+
+`Resource` should be the simplest service-layer wrapper and should come first.
+
+At a rough level it owns:
+
+1. the sandbox-local registry of known resources
+2. mapping from stable `resource_id` to real sandbox-space paths
+3. managed-resource maintenance registration and status
+4. the distinction between registry-only resources and `ContexTree`-managed resources
+
+It does not own:
+
+1. the resource files themselves
+2. per-session mount policy
+
+### 17.2 Identity Management
+
+Identity management should own:
+
+1. create/update/list/read of normal identities
+2. create/update/list/read of lighter `human/` and `native/` entries
+3. top-level persona/config handling for those lighter categories
+4. identity skill overlay state
+
+Normal identities should be backed by `IdentityState`.
+
+Lighter `human/` and `native/` entries may stay simpler at the top `Memory`
+layer and should not be forced into the full `IdentityState` shape in v1.
+
+### 17.3 Session Management
+
+Session management should own:
+
+1. create/update/list/read of sandbox-local sessions
+2. membership and mount mutation for sessions
+3. one `SessionBook` per session
+4. session-local attachment import and query surfaces
+
+It does not own:
+
+1. pending confirm/retry/rewind state
+
+That remains a `Nerve` responsibility.
+
+### 17.4 Brain-Facing Tool APIs
+
+`Memory` should expose stable noun-based tool APIs for `Brain`.
+
+At a rough level these should cover:
+
+1. resource list/read/view/search and later write where policy allows
+2. session query/append/attach and related metadata access
+3. identity query/evolve and typed state operations
+4. skill list/search/read
+
+`Brain` should not manipulate system-space files directly.
+
+### 17.5 Ownership Split
+
+At a rough level the ownership split should remain:
+
+1. `Memory` owns durable truth
+2. `Nerve` owns routing and pending-turn cache
+3. `Brain` owns execution logic only
+
+## 18. Resource Registry And Maintenance
+
+Hydrai should adopt the useful split from AIOS `Gateway`:
+
+1. a sandbox-local global resource registry
+2. separate per-session mounts stored in `SessionBook`
+
+External term:
+
+1. `Resource`
+
+Internal lineage:
+
+1. AIOS `context block`
+2. internal `ContexTree` where applicable
+
+### 18.1 Core Role
+
+The `Resource` layer should own:
+
+1. stable sandbox-local `resource_id` registration
+2. metadata for each registered resource
+3. optional maintenance policy for managed resources
+4. status/reporting for those managed resources
+
+The `Resource` layer should not own:
+
+1. per-session mount state
+2. identity membership policy
+3. the actual resource file contents
+
+### 18.2 Storage Position
+
+Per sandbox:
+
+1. `root/sandboxes/<sandbox>/resources.json`
+
+That file is registry only.
+
+Actual resource content remains in sandbox space, for example under
+`/Users/<sandbox-user>/...`.
+
+### 18.3 Registry Shape
+
+Hydrai should keep the same broad AIOS idea:
+
+1. one stable id per registered resource
+2. each id maps to one configured root or path
+3. maintenance policy belongs to the registry, not inside the resource tree
+
+Directionally, the sandbox-local registry should look like:
+
+```json
+{
+  "default_maintain_interval_sec": 300,
+  "resources": {
+    "workspace-main": {
+      "type": "context_tree",
+      "root": "/Users/olympus/workspace/main",
+      "config_path": "/Users/zeus/Public/hydrai/Memory.json",
+      "maintain_interval_sec": null
+    }
+  }
+}
+```
+
+Fields:
+
+1. `default_maintain_interval_sec`: sandbox default for managed-resource maintenance
+2. `resources[resource_id].type`: internal handling type such as `context_tree`, `file`, or future types
+3. `resources[resource_id].root`: absolute sandbox-space root or file path
+4. `resources[resource_id].config_path`: optional config path for managed tree behavior
+5. `resources[resource_id].maintain_interval_sec`: optional per-resource override; `0` disables maintenance for that resource
+
+### 18.4 V1 Resource Types
+
+For v1, `Memory` should primarily care about:
+
+1. `context_tree`
+2. maybe plain `file` later if needed
+
+The important point is not to over-expand the type system yet.
+
+### 18.5 Managed vs Registry-Only
+
+Hydrai should distinguish:
+
+1. registry-only resources
+2. managed resources
+
+A managed resource means:
+
+1. `Memory` knows how to open it through one internal substrate such as `ContexTree`
+2. `Memory` may maintain summaries and semantic search state for it
+3. `Memory` may report maintenance status for it
+
+A registry-only resource means:
+
+1. the id and path are known
+2. richer maintenance or semantic operations may be unavailable
+
+### 18.6 Maintenance Ownership
+
+Hydrai should keep the useful AIOS rule that operational maintenance policy
+lives in the registry, not inside `.PROMPT.json`.
+
+That means:
+
+1. global default maintenance interval is registry state
+2. per-resource maintenance override is registry state
+3. local `.PROMPT.json` remains for summary/model/prompt overrides only
+
+### 18.7 Maintenance Execution Model
+
+Unlike AIOS detached daemons, Hydrai should run maintenance inside the
+`Memory` service process.
+
+So:
+
+1. registry records decide whether maintenance is desired
+2. `Memory` owns the worker-thread scheduler
+3. `Memory` reconciles actual running maintenance workers against desired policy
+
+### 18.8 Relationship To Session Mounts
+
+Per-session mount state should remain separate.
+
+That means:
+
+1. the registry answers what resources exist in the sandbox
+2. `SessionBook` answers which resource ids are mounted in one session and with what mode
+
+This is the same useful split AIOS had between:
+
+1. global context registry
+2. per-session mounted context policy
+
+### 18.9 Brain-Facing Use
+
+At a rough level, `Brain` should eventually receive:
+
+1. resource id
+2. resource type
+3. top-level summary when available
+4. only the resource ids actually mounted or otherwise allowed for that session
+
+By default prompt-facing systems should prefer resource ids and summaries rather
+than raw absolute paths.

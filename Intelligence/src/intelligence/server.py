@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -21,6 +22,7 @@ from .config import RouteConfig, ServiceConfig
 from .embedding import EmbeddingBackend
 
 LOG = logging.getLogger("intelligence.server")
+CONTROL_PORT = 61000
 
 
 class RouteRuntime:
@@ -126,24 +128,96 @@ class RouteRuntime:
 
 class IntelligenceService:
     def __init__(self, config: ServiceConfig, auth_gate: InternalAuthGate):
+        self._config = config
+        self._auth_gate = auth_gate
         embedding_backend = EmbeddingBackend()
         self._runtimes = [RouteRuntime(route, auth_gate, embedding_backend) for route in config.routes]
+        self._control_server = ThreadingHTTPServer(("127.0.0.1", CONTROL_PORT), self._make_control_handler())
+        self._control_thread = threading.Thread(target=self._control_server.serve_forever, daemon=True, name="intelligence-control")
+
+    def _make_control_handler(self):
+        service = self
+
+        class ControlHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/health":
+                    self._json(200, {"status": "ok", "service": "intelligence", "port": CONTROL_PORT})
+                    return
+                if self.path == "/help":
+                    self._json(200, service._help_payload())
+                    return
+                self._json(404, {"error": "not found"})
+
+            def _json(self, status: int, payload: Any):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, fmt: str, *args):
+                LOG.info("[control:%s] " + fmt, CONTROL_PORT, *args)
+
+        return ControlHandler
+
+    def _help_payload(self) -> dict[str, Any]:
+        return {
+            "service": "Hydrai Intelligence",
+            "control_port": CONTROL_PORT,
+            "security_mode": self._auth_gate.mode,
+            "config_path": self._config.config_path,
+            "workspace_hint": os.path.expanduser("~/Public/hydrai"),
+            "usage": {
+                "startup": "hydrai-intelligence --config ~/Public/hydrai/Intelligence.json",
+                "endpoints": {
+                    "chat": "POST /v1/chat/completions",
+                    "embeddings": "POST /v1/embeddings",
+                    "route_health": "GET /health",
+                    "service_help": "GET /help",
+                    "service_health": "GET /health",
+                },
+            },
+            "routes": [
+                {
+                    "name": runtime.route.name,
+                    "type": runtime.route.type,
+                    "adapter": runtime.route.adapter,
+                    "listen": runtime.route.listen,
+                    "model": runtime.route.model,
+                    "search": runtime.route.search,
+                    "think": list(runtime.route.think),
+                    "modalities": runtime.route.modalities,
+                    "context_k": runtime.route.context_k,
+                    "max_concurrency": runtime.route.limits.max_concurrency,
+                }
+                for runtime in self._runtimes
+            ],
+        }
 
     def start(self) -> None:
         started: list[RouteRuntime] = []
         try:
+            self._control_thread.start()
+            LOG.info("started Intelligence control server on :%s", CONTROL_PORT)
             for runtime in self._runtimes:
                 runtime.start()
                 started.append(runtime)
         except Exception:
             for runtime in reversed(started):
                 runtime.stop()
+            self._control_server.shutdown()
+            self._control_server.server_close()
             raise
 
     def wait(self) -> None:
+        self._control_thread.join()
         for runtime in self._runtimes:
             runtime.thread.join()
 
     def stop(self) -> None:
         for runtime in reversed(self._runtimes):
             runtime.stop()
+        self._control_server.shutdown()
+        self._control_server.server_close()
+        LOG.info("stopped Intelligence control server on :%s", CONTROL_PORT)

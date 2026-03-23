@@ -18,6 +18,8 @@ Current route endpoints:
 1. `POST /v1/chat/completions`
 2. `POST /v1/embeddings`
 3. `GET /health`
+4. control/help port `61000`
+5. `GET /help` on port `61000`
 
 ## Install
 
@@ -36,20 +38,20 @@ python3 -m pip install -e .
 Installed console entrypoint:
 
 ```bash
-hydrai-intelligence --config /abs/path/config.json
+hydrai-intelligence --config ~/Public/hydrai/Intelligence.json
 ```
 
 Source entrypoint:
 
 ```bash
-PYTHONPATH=src python3 -m intelligence --config /abs/path/config.json
+PYTHONPATH=src python3 -m intelligence --config ~/Public/hydrai/Intelligence.json
 ```
 
 ## Runtime Inputs
 
 Required:
 
-1. `--config /abs/path/config.json`
+1. `--config ~/Public/hydrai/Intelligence.json`
 
 Security mode:
 
@@ -65,6 +67,24 @@ Provider keys:
 
 1. `XAI_API_KEY`
 2. `ALIBABA_API_KEY`
+
+## Control Port
+
+`Intelligence` reserves port `61000` for service-level discovery and help.
+
+Endpoints:
+
+1. `GET http://127.0.0.1:61000/health`
+2. `GET http://127.0.0.1:61000/help`
+
+`/help` returns:
+
+1. current config path
+2. current security mode
+3. loaded routes
+4. route ports
+5. route capabilities
+6. startup usage guidance
 
 ## Example Config
 

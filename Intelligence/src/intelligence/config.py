@@ -41,6 +41,7 @@ class RouteConfig:
 @dataclass(frozen=True)
 class ServiceConfig:
     routes: tuple[RouteConfig, ...]
+    config_path: str = ""
 
 
 def load_config(path: str | Path) -> ServiceConfig:
@@ -61,7 +62,7 @@ def load_config(path: str | Path) -> ServiceConfig:
     seen_ports: set[int] = set()
     for idx, raw in enumerate(routes):
         validated.append(_validate_route(raw, idx, seen_ports))
-    return ServiceConfig(routes=tuple(validated))
+    return ServiceConfig(routes=tuple(validated), config_path=str(path))
 
 
 def _validate_route(raw: object, idx: int, seen_ports: set[int]) -> RouteConfig:

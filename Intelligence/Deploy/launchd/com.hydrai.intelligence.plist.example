@@ -9,7 +9,7 @@
   <array>
     <string>/opt/homebrew/bin/hydrai-intelligence</string>
     <string>--config</string>
-    <string>/Users/zeus/Codebase/hydrai/Intelligence/Configs/config.example.json</string>
+    <string>/Users/zeus/Public/hydrai/Intelligence.json</string>
   </array>
 
   <key>EnvironmentVariables</key>
@@ -28,7 +28,7 @@
   <true/>
 
   <key>WorkingDirectory</key>
-  <string>/Users/zeus/Codebase/hydrai/Intelligence</string>
+  <string>/Users/zeus/Public/hydrai</string>
 
   <key>StandardOutPath</key>
   <string>/tmp/hydrai-intelligence.out.log</string>

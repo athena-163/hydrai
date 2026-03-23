@@ -7,10 +7,10 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/opt/hydrai/Intelligence
-Environment=HYDRAI_SECURITY_MODE=secure
+Environment=HYDRAI_SECURITY_MODE=dev
 Environment=XAI_API_KEY=REPLACE_ME
 Environment=ALIBABA_API_KEY=REPLACE_ME
-ExecStart=/usr/local/bin/hydrai-intelligence --config /opt/hydrai/Intelligence/config.json
+ExecStart=/usr/local/bin/hydrai-intelligence --config /root/Public/hydrai/Intelligence.json
 Restart=always
 RestartSec=3
 

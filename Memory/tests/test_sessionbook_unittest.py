@@ -106,6 +106,13 @@ class SessionBookTests(unittest.TestCase):
             self.assertEqual(result["identities"], {"athena": "rw"})
             self.assertEqual(result["resources"], {"workspace-main": "ro"})
 
+    def test_query_without_embed_omits_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            book = _make_book(tmp)
+            book.append("hello")
+            result = book.query()
+            self.assertNotIn("results", result)
+
     def test_query_uses_prior_summaries_and_recent_raw(self):
         with tempfile.TemporaryDirectory() as tmp:
             book = _make_book(tmp, min_break_bytes=5, max_chapter_bytes=10000, recent_budget=10, context_budget=400)
@@ -138,6 +145,16 @@ class SessionBookTests(unittest.TestCase):
                 [{"tag": "0001.jpg", "path": os.path.join(book.root, "attachments", "0001.jpg"), "summary": "whiteboard photo"}],
             )
 
+    def test_attachment_info_skips_missing_tags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            book = _make_book(tmp)
+            src = Path(tmp) / "manual.jpg"
+            src.write_bytes(b"\xff\xd8\xff\x00")
+            tag = book.attach(str(src), "zeus", summary="whiteboard photo")
+            info = book.attachment_info([tag, "9999.jpg"])
+            self.assertEqual(len(info), 1)
+            self.assertEqual(info[0]["tag"], "0001.jpg")
+
     def test_attach_without_extension_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             book = _make_book(tmp)
@@ -168,6 +185,50 @@ class SessionBookTests(unittest.TestCase):
             data = load_summary(tmp)
             self.assertTrue(data["files"]["000000.log"]["text"])
             self.assertTrue(data["files"]["000001.log"]["text"])
+
+    def test_config_limits_override_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "config.json"), "w", encoding="utf-8") as f:
+                json.dump({"limits": {"max_chapter_bytes": 2048, "min_break_bytes": 64}}, f)
+            book = SessionBook(tmp)
+            self.assertEqual(book.max_chapter_bytes, 2048)
+            self.assertEqual(book.min_break_bytes, 64)
+
+    def test_proxy_text_backend_uses_tree_route_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "contextree.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "intelligence": {
+                            "base_url": "http://127.0.0.1",
+                            "text_port": 61102,
+                            "image_port": 61101,
+                            "video_port": 61201,
+                            "embedder_port": 61100,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            book = SessionBook(tmp, config_path=str(config), min_break_bytes=5)
+            book.llm.summarize = mock.MagicMock(side_effect=["chapter summary", "folder summary"])
+            book.append("content for chapter")
+            self.assertTrue(book.end_chapter())
+            first = book.llm.summarize.call_args_list[0]
+            self.assertEqual(first.kwargs["route_port"], 61102)
+            self.assertEqual(first.kwargs["max_tokens"], 512)
+            second = book.llm.summarize.call_args_list[1]
+            self.assertEqual(second.kwargs["route_port"], 61102)
+            self.assertEqual(second.kwargs["max_tokens"], 200)
+
+    def test_invalid_identity_and_resource_ids_raise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            book = _make_book(tmp)
+            with self.assertRaises(ValueError):
+                book.invite("", "rw")
+            with self.assertRaises(ValueError):
+                book.mount(" ", "rw")
 
     def test_search_with_query_embed_returns_results(self):
         with tempfile.TemporaryDirectory() as tmp:

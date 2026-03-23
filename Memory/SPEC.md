@@ -298,6 +298,14 @@ At high level, each resource record should eventually capture:
 
 1. `resource_id`
 2. `type`
+3. backing path or locator
+4. ownership/sandbox scope
+5. mount policy or access mode
+6. optional managed-tree config reference
+
+The registry owns metadata and bookkeeping only.
+
+It does not relocate the actual resource content under the system-space root.
 
 ## 12. SessionBook
 
@@ -556,16 +564,8 @@ Change:
 3. make pending-turn state explicitly out of scope
 4. treat immediate semantic consistency for attachments as the default expectation
 5. keep service/API language aligned with Hydrai's sandbox-local session model
-3. backing path or locator
-4. ownership/sandbox scope
-5. mount policy or access mode
-6. optional managed-tree config reference
 
-The registry owns metadata and bookkeeping only.
-
-It does not relocate the actual resource content under the system-space root.
-
-## 9. Service Dependency Rule
+## 13. Service Dependency Rule
 
 `Memory` should be a self-contained package.
 
@@ -579,7 +579,7 @@ behavior is needed, for example:
 This keeps all storage semantics local to `Memory` while keeping model runtime
 out of it.
 
-## 10. Next Spec Stages
+## 14. Next Spec Stages
 
 After this first slice, `Memory/SPEC.md` should next freeze:
 

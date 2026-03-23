@@ -111,16 +111,17 @@ class IdentityStateTests(unittest.TestCase):
             result = ident.query(query_embed=embedder.embed("creator"), query_text="ignored", top_k=5)
             self.assertIn("results", result)
 
-    def test_query_view_excludes_config_and_impulses(self):
+    def test_query_view_excludes_config_but_keeps_impulses_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             ident = _make_identity(tmp, embedder=_FakeEmbedder())
             ident.set_dynamic("zeus", "Creator")
+            ident.write_text("impulses/weekly.json", '{"kind":"cron"}')
             ident.sync()
             result = ident.query(query_text="creator")
             paths = [item["path"] for item in result["view"]]
             self.assertNotIn("config.json", paths)
-            self.assertNotIn("impulses", paths)
-            self.assertNotIn("impulses/", paths)
+            self.assertIn("impulses/", paths)
+            self.assertIn("impulses/weekly.json", paths)
 
     def test_evolve_adds_and_updates(self):
         with tempfile.TemporaryDirectory() as tmp:

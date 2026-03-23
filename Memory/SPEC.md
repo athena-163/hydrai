@@ -808,7 +808,12 @@ Search should focus on:
 It should not waste query bandwidth on:
 
 1. `config.json`
-2. `impulses/`
+
+Hydrai clarification:
+
+1. `impulses/` remains part of the durable identity tree
+2. impulse files may appear in the structural `view`
+3. what is deferred is the impulse file schema and higher-level semantics, not its existence in the tree
 
 ### 15.10 Evolve Path
 
@@ -840,13 +845,14 @@ This is cleaner than forcing every caller to pass an already filesystem-safe tok
 
 ### 15.10.2 Impulses
 
-Impulse payload handling is intentionally deferred.
+Impulse payload schema is intentionally deferred.
 
 For now:
 
-1. `impulses/` stays out of the implementation focus
-2. detailed impulse payload semantics should be designed with the `Impulse` service later
-3. `IdentityState` implementation may omit typed impulse behavior in the first pass if needed
+1. `impulses/` remains part of `IdentityState`
+2. impulse files remain part of the visible tree/view surface
+3. detailed impulse payload schema and execution semantics should be designed with the `Impulse` service later
+4. `IdentityState` may still expose simple raw-file helpers without interpreting schema
 
 ### 15.11 What To Keep From AIOS
 
@@ -870,4 +876,4 @@ Change:
 5. keep config mostly opaque while documenting the skill-filter subtree clearly
 6. treat `SOUL` as self-only and `PERSONA` as outward-facing
 7. normalize memorable titles instead of requiring pre-sanitized tokens
-8. leave impulse semantics deferred to the `Impulse` service design
+8. leave impulse schema and execution semantics deferred to the `Impulse` service design

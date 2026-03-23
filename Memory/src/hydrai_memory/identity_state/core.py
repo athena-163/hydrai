@@ -188,7 +188,7 @@ class IdentityState(ContexTree):
     ) -> dict:
         if query_embed is None and query_text is None:
             raise ValueError("IdentityState.query requires query_embed or query_text")
-        exclude = {"config.json", "impulses", "impulses/"}
+        exclude = {"config.json"}
         view = [item for item in self.view(depth=2, summary_depth=1) if item["path"] not in exclude]
         result: dict = {
             "soul": self.soul(),

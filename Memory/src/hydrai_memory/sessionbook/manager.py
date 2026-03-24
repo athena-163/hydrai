@@ -22,7 +22,7 @@ class SessionStore:
         self.sandbox_root = os.path.join(self.storage_root, "sandboxes", self.sandbox_id)
         self.sessions_root = os.path.join(self.sandbox_root, "sessions")
         self.session_kwargs = dict(session_kwargs)
-        self.identity_store = IdentityStore(storage_root, sandbox_id, **session_kwargs)
+        self.identity_store = IdentityStore(storage_root, sandbox_id, embedder=self.session_kwargs.get("embedder"))
         self.resource_registry = ResourceRegistry(self.sandbox_root)
         os.makedirs(self.sessions_root, exist_ok=True)
 
@@ -65,6 +65,11 @@ class SessionStore:
                 raise FileNotFoundError(f"unknown mounted resource: {resource_id}")
             normalized[resource_id] = mode
         return normalized
+
+    def _session_has_identity(self, session_id: str, identity_id: str) -> bool:
+        cfg = self._load_session(session_id).config()
+        identities = cfg.get("identities", {})
+        return isinstance(identities, dict) and identity_id in identities
 
     def _summary(self, session_id: str) -> dict[str, Any]:
         book = self._load_session(session_id)
@@ -161,6 +166,8 @@ class SessionStore:
         sender = _validate_token(sender, "sender")
         if not self._identity_like_exists(sender):
             raise FileNotFoundError(f"unknown identity-like participant: {sender}")
+        if not self._session_has_identity(session_id, sender):
+            raise PermissionError(f"sender is not a participant in session: {sender}")
         book = self._load_session(session_id)
         tag = book.attach(source_path, sender, summary=summary)
         info = book.attachment_info([tag])

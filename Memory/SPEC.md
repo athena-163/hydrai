@@ -1709,6 +1709,7 @@ Rules:
 4. attachment search results should naturally appear with paths such as
    `attachments/0003.jpg`
 5. `attachments.next_serial` remains allocator state in `config.json`
+6. attachment sender must already be a current session participant
 
 ### 21.6 Brain-Facing Session APIs
 
@@ -1802,3 +1803,19 @@ The session manager layer adds:
 3. resource-registry integration
 4. merged search across session plus mounted resources
 5. compact `Brain`-facing API shaping
+
+### 21.8 Concurrency Direction
+
+Hydrai should prefer parallelism where the ownership boundary is clean.
+
+For session management, the practical direction is:
+
+1. parallel across different sandboxes
+2. conservative within one sandbox when mutating the same session root
+3. read-only operations may be parallelized more aggressively
+
+This stays aligned with the top-level Hydrai rule:
+
+1. maximize safe parallelism
+2. fall back to sequential behavior within one sandbox/session lane when
+   race risk is significant

@@ -70,6 +70,13 @@ class IdentityManagerTests(unittest.TestCase):
             self.assertEqual(item["soul"], "Inner law")
             self.assertEqual(item["config"]["skills"]["blacklist"], ["email"])
 
+    def test_create_identity_rejects_duplicate_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp)
+            store.create_identity("athena", "Helpful strategist", "Private compass", {})
+            with self.assertRaises(FileExistsError):
+                store.create_identity("athena", "Other persona", "Other soul", {})
+
     def test_identity_profile_relations_sessions_and_memorables(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = self._make_store(tmp)
@@ -84,10 +91,12 @@ class IdentityManagerTests(unittest.TestCase):
             ident.set_dynamic("artemis", "Trusted hunter sister.")
             ident.set_ongoing("athena-artemis", "Shared pursuit remains active.")
             memorable_name = ident.add_memorable("Memory One", "Memory One full content.")
+            second_memorable = ident.add_memorable("Memory Two", "Another memory full content.")
             ident.sync()
             memorables_root = os.path.join(ident.root, "memorables")
             data = load_summary(memorables_root)
             data = set_file_summary(data, memorable_name, "Memory One summary.", ident.embed("memory"))
+            data = set_file_summary(data, second_memorable, "Memory Two summary.", ident.embed("memory"))
             save_summary(memorables_root, data)
 
             profile = api.identity_profile("athena")
@@ -96,6 +105,8 @@ class IdentityManagerTests(unittest.TestCase):
             self.assertEqual(profile["self_dynamic"], "Centered and watchful.")
             self.assertEqual([item["id"] for item in profile["friends"]], ["artemis"])
             self.assertEqual([item["id"] for item in profile["sessions"]], ["athena-artemis"])
+            self.assertEqual(profile["friends"][0]["summary"], "")
+            self.assertEqual(profile["sessions"][0]["summary"], "")
 
             relations = api.identity_relations("athena", ["artemis", "missing"])
             self.assertEqual(relations["persona_map"]["artemis"], "Quiet scout")
@@ -114,6 +125,8 @@ class IdentityManagerTests(unittest.TestCase):
             )
             self.assertEqual(len(memorable["best_contents"]), 1)
             self.assertIn("Memory One full content.", memorable["best_contents"][0]["content"])
+            self.assertEqual(len(memorable["more_summaries"]), 1)
+            self.assertTrue(memorable["more_summaries"][0]["summary"])
 
 
 if __name__ == "__main__":

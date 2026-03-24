@@ -79,6 +79,38 @@ class IdentityManagerTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 store.create_identity("athena", "Other persona", "Other soul", {})
 
+    def test_human_crud_and_cross_category_uniqueness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp)
+            created = store.create_human("zeus", "Curious human operator")
+            self.assertEqual(created, {"id": "zeus", "persona": "Curious human operator"})
+            self.assertEqual(store.get_human("zeus"), {"id": "zeus", "persona": "Curious human operator"})
+            self.assertEqual(store.list_humans(), [{"id": "zeus", "persona": "Curious human operator"}])
+
+            store.set_human_persona("zeus", "Focused human operator")
+            self.assertEqual(store.get_human("zeus")["persona"], "Focused human operator")
+
+            with self.assertRaises(FileExistsError):
+                store.create_identity("zeus", "Helpful strategist", "Private compass", {})
+
+            removed = store.delete_human("zeus")
+            self.assertEqual(removed["id"], "zeus")
+            self.assertIsNone(store.get_human("zeus"))
+
+    def test_native_list_and_get(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp)
+            native_root = os.path.join(store.storage_root, "sandboxes", "alpha", "native", "codex")
+            os.makedirs(native_root, exist_ok=True)
+            with open(os.path.join(native_root, "PERSONA.md"), "w", encoding="utf-8") as handle:
+                handle.write("Terminal-native coding partner")
+
+            self.assertEqual(store.get_native("codex"), {"id": "codex", "persona": "Terminal-native coding partner"})
+            self.assertEqual(store.list_native(), [{"id": "codex", "persona": "Terminal-native coding partner"}])
+
+            with self.assertRaises(FileExistsError):
+                store.create_human("codex", "Conflicting human")
+
     def test_identity_profile_relations_sessions_and_memorables(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = self._make_store(tmp)

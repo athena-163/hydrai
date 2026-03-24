@@ -16,19 +16,22 @@ class IdentityStore:
     def __init__(self, storage_root: str, sandbox_id: str, **identity_kwargs: Any):
         self.storage_root = os.path.realpath(storage_root)
         self.sandbox_id = _validate_token(sandbox_id, "sandbox_id")
+        self.sandbox_root = os.path.join(self.storage_root, "sandboxes", self.sandbox_id)
         self.identities_root = os.path.join(self.storage_root, "sandboxes", self.sandbox_id, "identities")
         self.identity_kwargs = dict(identity_kwargs)
         os.makedirs(self.identities_root, exist_ok=True)
+        os.makedirs(self._category_root("human"), exist_ok=True)
+        os.makedirs(self._category_root("native"), exist_ok=True)
+
+    def _category_root(self, category: str) -> str:
+        return os.path.join(self.sandbox_root, category)
 
     def _identity_root(self, identity_id: str) -> str:
         return os.path.join(self.identities_root, _validate_token(identity_id, "identity_id"))
 
     def _light_root(self, category: str, identity_id: str) -> str:
         return os.path.join(
-            self.storage_root,
-            "sandboxes",
-            self.sandbox_id,
-            category,
+            self._category_root(category),
             _validate_token(identity_id, "identity_id"),
         )
 
@@ -46,6 +49,34 @@ class IdentityStore:
             "soul": ident.soul(),
             "config": ident.config(),
         }
+
+    def _light_summary(self, category: str, identity_id: str) -> dict[str, Any]:
+        root = self._light_root(category, identity_id)
+        persona_path = os.path.join(root, "PERSONA.md")
+        if not os.path.isfile(persona_path):
+            raise FileNotFoundError(f"unknown {category}: {identity_id}")
+        try:
+            with open(persona_path, "r", encoding="utf-8") as handle:
+                persona = handle.read()
+        except OSError:
+            persona = ""
+        return {"id": identity_id, "persona": persona}
+
+    def _write_persona_file(self, root: str, content: str) -> None:
+        os.makedirs(root, exist_ok=True)
+        path = os.path.join(root, "PERSONA.md")
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            handle.write(str(content))
+        os.replace(tmp, path)
+
+    def _ensure_id_available(self, identity_id: str) -> None:
+        identity_id = _validate_token(identity_id, "identity_id")
+        if os.path.exists(self._identity_root(identity_id)):
+            raise FileExistsError(f"identity already exists: {identity_id}")
+        for category in ("human", "native"):
+            if os.path.exists(self._light_root(category, identity_id)):
+                raise FileExistsError(f"identity-like id already exists in {category}: {identity_id}")
 
     def get_identity_like_persona(self, identity_id: str) -> str:
         normal = self.get_identity(identity_id)
@@ -80,9 +111,8 @@ class IdentityStore:
         if not isinstance(soul, str) or not soul:
             raise ValueError("soul must be a non-empty string")
         _validate_config_dict(config)
+        self._ensure_id_available(identity_id)
         root = self._identity_root(identity_id)
-        if os.path.exists(root):
-            raise FileExistsError(f"identity already exists: {identity_id}")
         ident = IdentityState.create(root, config=config, **self.identity_kwargs)
         ident.set_persona(persona)
         ident.set_soul(soul)
@@ -119,6 +149,60 @@ class IdentityStore:
         ident = self._load_identity(identity_id)
         ident.set_config(config)
         return self._summary(identity_id)
+
+    def list_humans(self) -> list[dict[str, Any]]:
+        try:
+            entries = sorted(
+                name for name in os.listdir(self._category_root("human"))
+                if os.path.isdir(os.path.join(self._category_root("human"), name))
+            )
+        except OSError:
+            return []
+        return [self._light_summary("human", name) for name in entries]
+
+    def create_human(self, identity_id: str, persona: str) -> dict[str, Any]:
+        identity_id = _validate_token(identity_id, "identity_id")
+        if not isinstance(persona, str) or not persona:
+            raise ValueError("persona must be a non-empty string")
+        self._ensure_id_available(identity_id)
+        self._write_persona_file(self._light_root("human", identity_id), persona)
+        return self._light_summary("human", identity_id)
+
+    def get_human(self, identity_id: str) -> dict[str, Any] | None:
+        try:
+            return self._light_summary("human", _validate_token(identity_id, "identity_id"))
+        except FileNotFoundError:
+            return None
+
+    def delete_human(self, identity_id: str) -> dict[str, Any] | None:
+        item = self.get_human(identity_id)
+        if item is None:
+            return None
+        shutil.rmtree(self._light_root("human", identity_id))
+        return item
+
+    def set_human_persona(self, identity_id: str, content: str) -> dict[str, Any]:
+        item = self.get_human(identity_id)
+        if item is None:
+            raise FileNotFoundError(f"unknown human: {identity_id}")
+        self._write_persona_file(self._light_root("human", identity_id), content)
+        return self._light_summary("human", identity_id)
+
+    def list_native(self) -> list[dict[str, Any]]:
+        try:
+            entries = sorted(
+                name for name in os.listdir(self._category_root("native"))
+                if os.path.isdir(os.path.join(self._category_root("native"), name))
+            )
+        except OSError:
+            return []
+        return [self._light_summary("native", name) for name in entries]
+
+    def get_native(self, identity_id: str) -> dict[str, Any] | None:
+        try:
+            return self._light_summary("native", _validate_token(identity_id, "identity_id"))
+        except FileNotFoundError:
+            return None
 
 
 class IdentityBrainAPI:

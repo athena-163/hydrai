@@ -1539,3 +1539,85 @@ Change:
 2. keep `Brain` identity access compact instead of exposing many small raw methods
 3. avoid duplicating generic tree read/search/view APIs
 4. defer `human/` and `native/` management until later
+
+## 20. Human And Native Identity-Like Records
+
+After normal identity management, Hydrai should support the two lighter
+identity-like categories with deliberately smaller contracts.
+
+### 20.1 Shared Rule
+
+Within one sandbox, ids are unique across all identity-like categories:
+
+1. normal identities
+2. `human/`
+3. `native/`
+
+Across different sandboxes, the same id may be reused.
+
+### 20.2 Native
+
+Native identities represent external third-party agent systems such as:
+
+1. `claude`
+2. `codex`
+
+They may participate in conversation like any other identity-like participant,
+but their real execution state and continuity live outside `Memory`.
+
+For v1, the `Memory` contract should be:
+
+1. one root per native id under `root/sandboxes/<sandbox>/native/<id>/`
+2. required `PERSONA.md`
+3. no `IdentityState`
+4. no `Memory`-managed runtime config/state contract
+
+The purpose of `PERSONA.md` here is to tell other parties:
+
+1. who this native identity is
+2. how to communicate with it effectively
+
+For v1, `Memory` should only require:
+
+1. `list_native()`
+2. `get_native(id)`
+
+Creation, deletion, and surgical edits may be handled by deployment or later
+admin/dashboard flows rather than by normal `Memory` CRUD.
+
+### 20.3 Human
+
+Human identities map real users/humans into the same persona-layer participant
+space.
+
+For v1, the `Memory` contract should be:
+
+1. one root per human id under `root/sandboxes/<sandbox>/human/<id>/`
+2. required `PERSONA.md`
+3. no `IdentityState`
+
+For v1, `Memory` should provide:
+
+1. `list_humans()`
+2. `create_human(id, persona)`
+3. `get_human(id)`
+4. `delete_human(id)`
+5. `set_human_persona(id, content)`
+
+### 20.4 Relationship To Normal Identity APIs
+
+The compact semantic APIs such as:
+
+1. `identity_profile`
+2. `identity_relations`
+3. `identity_sessions`
+4. `identity_memorables_search`
+
+remain normal-identity APIs.
+
+However, any API that resolves a target participant persona, especially
+`identity_relations`, should be able to resolve ids across:
+
+1. normal identities
+2. `human/`
+3. `native/`

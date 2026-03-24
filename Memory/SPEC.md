@@ -1932,3 +1932,207 @@ The service layer should preserve the already stated practical rule:
 1. reads may run in parallel
 2. writes should be serialized conservatively per sandbox
 3. parallelism across different sandboxes is preferred
+
+## 23. Skills In Memory
+
+For Hydrai `Memory`, skill handling should stay intentionally thin.
+
+`Memory` should:
+
+1. own the global durable `skills/` root
+2. initialize shipped `shortlist/` and `builtin/` seeds at deployment time
+3. expose skill discovery/rendering APIs to `Brain`
+4. leave actual skill execution policy to `Brain`
+
+`Memory` should not treat skills like ordinary CRUD-heavy user records in v1.
+
+### 23.1 Durable Layout
+
+At the system-space durable root:
+
+```text
+root/
+  skills/
+    shortlist/
+    builtin/
+    user/
+```
+
+Hydrai keeps the OpenClaw-compatible on-disk skill format:
+
+1. one folder per skill
+2. required `SKILL.md`
+3. optional `scripts/`, `references/`, `assets/`, `bin/`, `src/`
+
+### 23.2 Initialization
+
+`Memory` should initialize the shipped seed categories on deployment:
+
+1. `shortlist/`
+2. `builtin/`
+
+This should use the existing `SkillSet.initialize(...)` behavior:
+
+1. create missing category directories
+2. copy shipped prompt-skill trees into place
+3. do not overwrite an existing category directory
+
+This matches the retained AIOS behavior and keeps Hydrai bootstrap simple.
+
+### 23.3 Identity Filtering
+
+Actual visible skills for one running identity are not just “all skills.”
+
+The coarse filter remains identity-local config policy:
+
+```json
+{
+  "skills": {
+    "whitelist": [],
+    "blacklist": []
+  }
+}
+```
+
+Rules:
+
+1. filtering is by skill name
+2. empty whitelist means allow all by default
+3. non-empty whitelist restricts to listed skills
+4. blacklist is always subtractive
+
+This filter is still coarse policy only.
+
+### 23.4 Brain-Facing Skill APIs
+
+For `Brain`, the compact API surface should stay very small.
+
+#### 23.4.1 `skill_list`
+
+List visible skills across the known categories.
+
+Input:
+
+1. `sandbox_id` is implicit from the sandbox port
+2. `identity_id`
+
+Return:
+
+1. `results` list of:
+   1. `category`: `shortlist`, `builtin`, or `user`
+   2. `name`
+   3. `path`
+   4. `summary`
+
+Behavior:
+
+1. list from `shortlist/`
+2. list from `builtin/`
+3. list from `user/` when present
+4. apply the identity coarse skill filter before returning results
+
+#### 23.4.2 `skill_search`
+
+Search visible skills by plain text query.
+
+Input:
+
+1. `identity_id`
+2. `query`
+3. optional `limit`
+4. optional `min_score`
+
+Return:
+
+1. `results` list of:
+   1. `category`
+   2. `name`
+   3. `path`
+   4. `summary`
+   5. `score`
+   6. `matched_path`
+
+Behavior:
+
+1. search across `shortlist`, `builtin`, and optional `user`
+2. use `SkillSet.search_skills(...)`
+3. apply identity coarse skill filtering after category aggregation
+
+#### 23.4.3 `skill_read`
+
+Read one visible skill by exact name.
+
+Input:
+
+1. `identity_id`
+2. `name`
+3. optional exact `category`
+
+Return:
+
+1. `results` list of matching rendered entries, each with:
+   1. `category`
+   2. `name`
+   3. `path`
+   4. `prompt_text`
+
+Behavior:
+
+1. resolve exact name from visible skills
+2. if `category` is omitted, search categories in precedence order:
+   1. `shortlist`
+   2. `builtin`
+   3. `user`
+3. render prompt text with `SkillSet.render_prompt(...)`
+4. if filtered or not found, return empty results
+
+### 23.5 What Memory Does Not Own
+
+`Memory` should not own:
+
+1. whether a skill is actually executable in the current turn
+2. whether `Brain` may run shell/python/node code from that skill
+3. session-specific runtime tool exposure
+4. injected provider secrets for skill execution
+
+Those remain `Brain` concerns.
+
+### 23.6 OpenClaw Direction And Hydrai Implication
+
+Current OpenClaw is no longer “manual folders only.”
+
+From the official docs and ClawHub registry:
+
+1. OpenClaw loads bundled skills, managed/local skills, and workspace skills
+2. OpenClaw supports managed install/update flows through `openclaw skills ...`
+3. ClawHub is the public skill registry
+4. skills declare runtime requirements and optional installer metadata in
+   `SKILL.md` frontmatter
+
+Hydrai implication:
+
+1. a trusted remote skill-hub model is viable
+2. it should not replace the local folder model
+3. if added, it should be a narrow managed-install layer on top of the same
+   local `skills/` tree
+
+Recommended Hydrai direction:
+
+1. keep local folder roots as the source of truth
+2. initialize shipped `shortlist/` and `builtin/` locally
+3. add optional managed user-skill install later from one or more trusted hubs
+4. keep hub sync/install as a separate management feature, not part of the
+   base `SkillSet` primitive
+
+### 23.7 Security Note
+
+OpenClaw’s own docs explicitly treat third-party skills as untrusted code.
+
+Hydrai should do the same.
+
+That means any future remote install flow should:
+
+1. treat downloaded skills as equivalent to executable local code
+2. require explicit trust policy on allowed hubs
+3. preferably fetch into the sandbox-local user skill area rather than system
+   roots when the skill is tenant-specific

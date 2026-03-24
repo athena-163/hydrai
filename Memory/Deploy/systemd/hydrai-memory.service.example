@@ -1,0 +1,16 @@
+[Unit]
+Description=Hydrai Memory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hydrai/Memory
+Environment=HYDRAI_SECURITY_MODE=dev
+ExecStart=/usr/local/bin/hydrai-memory --config /root/Public/hydrai/Memory.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

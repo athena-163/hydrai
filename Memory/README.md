@@ -16,6 +16,8 @@ hydrai-memory --config ~/Public/hydrai/Memory.json
 Config:
 
 - example: [`Configs/config.example.json`](/Users/zeus/Codebase/hydrai/Memory/Configs/config.example.json)
+- deployed root-level config: `~/Public/hydrai/Memory.json`
+- deployed ContexTree backend config: `~/Public/hydrai/Memory.Context.json`
 
 Control port:
 
@@ -37,6 +39,17 @@ Security:
 
 1. `HYDRAI_SECURITY_MODE=dev` bypasses internal auth
 2. `HYDRAI_SECURITY_MODE=secure` requires Hydrai internal tokens
+
+ContexTree defaults:
+
+1. global text/image/video/embedder routes and prompts come from the configured `context_config_path`
+2. the recommended live file is `~/Public/hydrai/Memory.Context.json`
+3. individual resources may override prompts, route ports, and byte limits via local `.PROMPT.json`
+
+Service templates:
+
+1. macOS `launchd`: [com.hydrai.memory.plist.example](/Users/zeus/Codebase/hydrai/Memory/Deploy/launchd/com.hydrai.memory.plist.example)
+2. Linux `systemd`: [hydrai-memory.service.example](/Users/zeus/Codebase/hydrai/Memory/Deploy/systemd/hydrai-memory.service.example)
 
 The detailed architecture and API contract live in:
 

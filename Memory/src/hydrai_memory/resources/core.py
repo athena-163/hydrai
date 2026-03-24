@@ -55,6 +55,9 @@ class ResourceRegistry:
         self.default_maintain_interval_sec = float(default_maintain_interval_sec)
         self._handles: dict[str, MaintenanceHandle] = {}
         self._lock = threading.Lock()
+        self._watchdog_thread: threading.Thread | None = None
+        self._watchdog_stop = threading.Event()
+        self._watchdog_interval = 0.0
 
     @property
     def registry_path(self) -> str:
@@ -252,7 +255,38 @@ class ResourceRegistry:
                 results.append(refreshed)
         return results
 
+    def start_watchdog(self, interval: float = 60.0) -> None:
+        if self._watchdog_thread is not None and self._watchdog_thread.is_alive():
+            raise RuntimeError("resource watchdog already running")
+        self._watchdog_interval = float(interval)
+        self._watchdog_stop.clear()
+        self._watchdog_thread = threading.Thread(target=self._watchdog_loop, daemon=True)
+        self._watchdog_thread.start()
+
+    def stop_watchdog(self, timeout: float = 10.0) -> None:
+        self._watchdog_stop.set()
+        if self._watchdog_thread is not None:
+            self._watchdog_thread.join(timeout=timeout)
+            if not self._watchdog_thread.is_alive():
+                self._watchdog_thread = None
+
+    def watchdog_status(self) -> dict[str, Any]:
+        running = self._watchdog_thread is not None and self._watchdog_thread.is_alive()
+        return {
+            "running": running,
+            "interval": self._watchdog_interval if running else 0,
+        }
+
+    def _watchdog_loop(self) -> None:
+        while not self._watchdog_stop.is_set():
+            try:
+                self.reconcile_maintenance()
+            except Exception:
+                pass
+            self._watchdog_stop.wait(timeout=self._watchdog_interval)
+
     def stop_all_maintenance(self) -> None:
+        self.stop_watchdog()
         with self._lock:
             ids = list(self._handles.keys())
             for resource_id in ids:

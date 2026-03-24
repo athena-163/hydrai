@@ -1256,6 +1256,12 @@ So:
 2. `Memory` owns the worker-thread scheduler
 3. `Memory` reconciles actual running maintenance workers against desired policy
 
+This should include an internal watchdog loop that periodically calls
+maintenance reconciliation for the sandbox registry.
+
+`Nerve` may supervise whether the `Memory` service itself is alive, but it
+should not own per-resource maintenance health checks.
+
 ### 18.8 Relationship To Session Mounts
 
 Per-session mount state should remain separate.

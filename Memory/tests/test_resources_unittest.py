@@ -1,5 +1,6 @@
 import os
 import tempfile
+import threading
 import unittest
 
 from hydrai_memory.contexttree import ContexTree
@@ -100,6 +101,40 @@ class ResourceRegistryTests(unittest.TestCase):
                     }
                 },
             )
+
+    def test_watchdog_starts_and_stops(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sandbox_root = os.path.join(tmp, "sandboxes", "alpha")
+            os.makedirs(sandbox_root, exist_ok=True)
+            registry = ResourceRegistry(sandbox_root)
+
+            registry.start_watchdog(interval=0.05)
+            status = registry.watchdog_status()
+            self.assertTrue(status["running"])
+            self.assertEqual(status["interval"], 0.05)
+
+            registry.stop_watchdog()
+            self.assertEqual(registry.watchdog_status(), {"running": False, "interval": 0})
+
+    def test_watchdog_reconciles_registered_resources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sandbox_root = os.path.join(tmp, "sandboxes", "alpha")
+            os.makedirs(sandbox_root, exist_ok=True)
+            resource_root = os.path.join(tmp, "sandbox-home", "workspace")
+            os.makedirs(resource_root, exist_ok=True)
+            registry = ResourceRegistry(sandbox_root)
+            registry.register_resource("workspace-main", resource_root, maintain_interval_sec=0.05)
+            try:
+                registry.start_watchdog(interval=0.02)
+                for _ in range(20):
+                    item = registry.get_resource("workspace-main")
+                    if item and item["maintenance"]["running"]:
+                        break
+                    threading.Event().wait(0.02)
+                item = registry.get_resource("workspace-main")
+                self.assertTrue(item["maintenance"]["running"])
+            finally:
+                registry.stop_all_maintenance()
 
 
 class MemorySandboxAPITests(unittest.TestCase):

@@ -31,6 +31,8 @@ class IdentityManagerTests(unittest.TestCase):
     def _make_store(self, tmp: str) -> IdentityStore:
         storage_root = os.path.join(tmp, "memory")
         os.makedirs(os.path.join(storage_root, "sandboxes", "alpha", "identities"), exist_ok=True)
+        os.makedirs(os.path.join(storage_root, "sandboxes", "alpha", "human"), exist_ok=True)
+        os.makedirs(os.path.join(storage_root, "sandboxes", "alpha", "native"), exist_ok=True)
         return IdentityStore(storage_root, "alpha", embedder=_FakeEmbedder())
 
     def test_create_list_get_delete_identity(self):
@@ -127,6 +129,31 @@ class IdentityManagerTests(unittest.TestCase):
             self.assertIn("Memory One full content.", memorable["best_contents"][0]["content"])
             self.assertEqual(len(memorable["more_summaries"]), 1)
             self.assertTrue(memorable["more_summaries"][0]["summary"])
+
+    def test_identity_relations_resolves_human_and_native_personas(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp)
+            api = IdentityBrainAPI(store)
+            store.create_identity("athena", "Helpful strategist", "Private compass", {})
+            ident = store._load_identity("athena")
+            ident.set_dynamic("zeus", "Trusted human partner.")
+            ident.set_dynamic("codex", "Trusted native engineer.")
+            ident.sync()
+
+            human_root = os.path.join(store.storage_root, "sandboxes", "alpha", "human", "zeus")
+            native_root = os.path.join(store.storage_root, "sandboxes", "alpha", "native", "codex")
+            os.makedirs(human_root, exist_ok=True)
+            os.makedirs(native_root, exist_ok=True)
+            with open(os.path.join(human_root, "PERSONA.md"), "w", encoding="utf-8") as handle:
+                handle.write("Curious human operator")
+            with open(os.path.join(native_root, "PERSONA.md"), "w", encoding="utf-8") as handle:
+                handle.write("Terminal-native coding partner")
+
+            relations = api.identity_relations("athena", ["zeus", "codex"])
+            self.assertEqual(relations["persona_map"]["zeus"], "Curious human operator")
+            self.assertEqual(relations["persona_map"]["codex"], "Terminal-native coding partner")
+            self.assertEqual(relations["dynamic_map"]["zeus"], "Trusted human partner.")
+            self.assertEqual(relations["dynamic_map"]["codex"], "Trusted native engineer.")
 
 
 if __name__ == "__main__":

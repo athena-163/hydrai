@@ -23,6 +23,15 @@ class IdentityStore:
     def _identity_root(self, identity_id: str) -> str:
         return os.path.join(self.identities_root, _validate_token(identity_id, "identity_id"))
 
+    def _light_root(self, category: str, identity_id: str) -> str:
+        return os.path.join(
+            self.storage_root,
+            "sandboxes",
+            self.sandbox_id,
+            category,
+            _validate_token(identity_id, "identity_id"),
+        )
+
     def _load_identity(self, identity_id: str) -> IdentityState:
         root = self._identity_root(identity_id)
         if not os.path.isdir(root):
@@ -37,6 +46,22 @@ class IdentityStore:
             "soul": ident.soul(),
             "config": ident.config(),
         }
+
+    def get_identity_like_persona(self, identity_id: str) -> str:
+        normal = self.get_identity(identity_id)
+        if normal is not None:
+            return str(normal.get("persona", "") or "")
+        for category in ("human", "native"):
+            root = self._light_root(category, identity_id)
+            persona_path = os.path.join(root, "PERSONA.md")
+            if not os.path.isfile(persona_path):
+                continue
+            try:
+                with open(persona_path, "r", encoding="utf-8") as handle:
+                    return handle.read()
+            except OSError:
+                return ""
+        return ""
 
     def list_identities(self) -> list[dict[str, Any]]:
         try:
@@ -148,9 +173,9 @@ class IdentityBrainAPI:
             if not dynamic_text:
                 continue
             dynamic_map[friend_id] = dynamic_text
-            friend_item = self.store.get_identity(friend_id)
-            if friend_item is not None:
-                persona_map[friend_id] = str(friend_item.get("persona", "") or "")
+            persona_text = self.store.get_identity_like_persona(friend_id)
+            if persona_text:
+                persona_map[friend_id] = persona_text
         return {"persona_map": persona_map, "dynamic_map": dynamic_map}
 
     def identity_sessions(self, identity_id: str, session_ids: list[str]) -> dict[str, Any]:

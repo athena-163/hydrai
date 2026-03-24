@@ -1468,8 +1468,10 @@ Returns:
 Meaning:
 
 1. `persona_map` is read from each asked friend's `PERSONA.md`
-2. `dynamic_map` is read from the target identity's `dynamics/<friend>.md`
-3. unknown or unavailable `friend_ids` should be ignored rather than failing the whole call
+2. asked friend ids may refer to normal identities, `human/`, or `native/`
+3. `Memory` should resolve those persona roots across all identity-like participant categories
+4. `dynamic_map` is read from the target identity's `dynamics/<friend>.md`
+5. unknown or unavailable `friend_ids` should be ignored rather than failing the whole call
 
 ### 19.8 `identity_sessions`
 

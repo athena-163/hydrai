@@ -113,9 +113,13 @@ class ResourceRegistryTests(unittest.TestCase):
             status = registry.watchdog_status()
             self.assertTrue(status["running"])
             self.assertEqual(status["interval"], 0.05)
+            self.assertFalse(status["default_git_auto_commit_daily"])
 
             registry.stop_watchdog()
-            self.assertEqual(registry.watchdog_status(), {"running": False, "interval": 0})
+            self.assertEqual(
+                registry.watchdog_status(),
+                {"running": False, "interval": 0, "default_git_auto_commit_daily": False},
+            )
 
     def test_watchdog_reconciles_registered_resources(self):
         with tempfile.TemporaryDirectory() as tmp:

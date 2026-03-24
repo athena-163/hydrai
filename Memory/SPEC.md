@@ -1856,6 +1856,8 @@ Resource management:
 6. `GET /sandboxes/{sandbox_id}/resources/watchdog`
 7. `POST /sandboxes/{sandbox_id}/resources/watchdog/start`
 8. `POST /sandboxes/{sandbox_id}/resources/watchdog/stop`
+9. `POST /sandboxes/{sandbox_id}/resources/watchdog/defaults`
+10. `POST /sandboxes/{sandbox_id}/resources/git-run`
 
 Identity management:
 

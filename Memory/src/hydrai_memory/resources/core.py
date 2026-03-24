@@ -378,9 +378,11 @@ class ResourceRegistry:
 
     def watchdog_status(self) -> dict[str, Any]:
         running = self._watchdog_thread is not None and self._watchdog_thread.is_alive()
+        data = self._load()
         return {
             "running": running,
             "interval": self._watchdog_interval if running else 0,
+            "default_git_auto_commit_daily": bool(data.get("default_git_auto_commit_daily", False)),
         }
 
     def _watchdog_loop(self) -> None:

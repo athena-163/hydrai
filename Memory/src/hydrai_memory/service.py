@@ -88,6 +88,7 @@ class SandboxRuntime:
             "storage_root": self.service_config.storage_root,
             "sandbox_space_root": self.sandbox_config.sandbox_space_root,
             "context_config_path": self.sandbox_config.context_config_path,
+            "watchdog": self.resource_registry.watchdog_status(),
             "endpoints": {
                 "health": "GET /health",
                 "help": "GET /help",
@@ -204,6 +205,7 @@ class MemoryService:
                     "port": item.server.server_address[1] if item.server is not None else item.sandbox_config.port,
                     "sandbox_space_root": item.sandbox_config.sandbox_space_root,
                     "context_config_path": item.sandbox_config.context_config_path,
+                    "watchdog": item.resource_registry.watchdog_status(),
                 }
                 for item in self._sandboxes.values()
             ],
@@ -434,6 +436,7 @@ class MemoryService:
                     resource_type=str(body.get("resource_type") or "context_tree"),
                     config_path=str(body.get("config_path") or ""),
                     maintain_interval_sec=body.get("maintain_interval_sec"),
+                    git_auto_commit_daily=body.get("git_auto_commit_daily"),
                 )
             )
         if rest == ["resources", "unregister"]:
@@ -464,6 +467,20 @@ class MemoryService:
                     sandbox.resource_registry.stop_watchdog(),
                     sandbox.resource_registry.watchdog_status(),
                 )[1]
+            )
+        if rest == ["resources", "watchdog", "defaults"]:
+            def _set_defaults():
+                if "interval" in body:
+                    sandbox.resource_registry.set_default_maintain_interval(float(body.get("interval", 0)))
+                if "git_auto_commit_daily" in body:
+                    sandbox.resource_registry.set_default_git_auto_commit_daily(bool(body.get("git_auto_commit_daily")))
+                return sandbox.resource_registry.watchdog_status()
+            return sandbox.mutate(_set_defaults)
+        if rest == ["resources", "git-run"]:
+            return sandbox.mutate(
+                lambda: {
+                    "results": sandbox.resource_registry.run_git_automation(str(body.get("resource_id") or ""))
+                }
             )
         if rest == ["identities", "create"]:
             return sandbox.mutate(

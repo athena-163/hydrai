@@ -97,6 +97,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     help_payload = _request_json("GET", control_base + "/help")
                     self.assertEqual(help_payload["service"], "Hydrai Memory")
                     self.assertEqual(help_payload["sandboxes"][0]["id"], "alpha")
+                    self.assertIn("watchdog", help_payload["sandboxes"][0])
 
                     registered = _request_json(
                         "POST",
@@ -250,6 +251,13 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         {"interval": 0.05},
                     )
                     self.assertTrue(watchdog["running"])
+
+                    watchdog_defaults = _request_json(
+                        "POST",
+                        control_base + "/sandboxes/alpha/resources/watchdog/defaults",
+                        {"git_auto_commit_daily": True},
+                    )
+                    self.assertTrue(watchdog_defaults["default_git_auto_commit_daily"])
                 finally:
                     service.stop()
 

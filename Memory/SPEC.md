@@ -1819,3 +1819,116 @@ This stays aligned with the top-level Hydrai rule:
 1. maximize safe parallelism
 2. fall back to sequential behavior within one sandbox/session lane when
    race risk is significant
+
+## 22. Memory Service Endpoints
+
+`Memory` should expose the already-implemented resource, identity, and session
+APIs through one control port and one sandbox-facing port per sandbox.
+
+### 22.1 Control Port
+
+The control port is the system-space admin and discovery surface.
+
+Base endpoints:
+
+1. `GET /health`
+2. `GET /help`
+3. `GET /sandboxes`
+
+Sandbox-scoped prefix:
+
+1. `/sandboxes/{sandbox_id}/...`
+
+Resource management:
+
+1. `GET /sandboxes/{sandbox_id}/resources`
+2. `GET /sandboxes/{sandbox_id}/resources/{resource_id}`
+3. `POST /sandboxes/{sandbox_id}/resources/register`
+4. `POST /sandboxes/{sandbox_id}/resources/unregister`
+5. `POST /sandboxes/{sandbox_id}/resources/reconcile`
+6. `GET /sandboxes/{sandbox_id}/resources/watchdog`
+7. `POST /sandboxes/{sandbox_id}/resources/watchdog/start`
+8. `POST /sandboxes/{sandbox_id}/resources/watchdog/stop`
+
+Identity management:
+
+1. `GET /sandboxes/{sandbox_id}/identities`
+2. `GET /sandboxes/{sandbox_id}/identities/{identity_id}`
+3. `POST /sandboxes/{sandbox_id}/identities/create`
+4. `POST /sandboxes/{sandbox_id}/identities/{identity_id}/persona`
+5. `POST /sandboxes/{sandbox_id}/identities/{identity_id}/soul`
+6. `POST /sandboxes/{sandbox_id}/identities/{identity_id}/config`
+7. `DELETE /sandboxes/{sandbox_id}/identities/{identity_id}`
+8. `GET /sandboxes/{sandbox_id}/humans`
+9. `GET /sandboxes/{sandbox_id}/humans/{identity_id}`
+10. `POST /sandboxes/{sandbox_id}/humans/create`
+11. `POST /sandboxes/{sandbox_id}/humans/{identity_id}/persona`
+12. `DELETE /sandboxes/{sandbox_id}/humans/{identity_id}`
+13. `GET /sandboxes/{sandbox_id}/native`
+14. `GET /sandboxes/{sandbox_id}/native/{identity_id}`
+
+Session management:
+
+1. `GET /sandboxes/{sandbox_id}/sessions`
+2. `GET /sandboxes/{sandbox_id}/sessions/{session_id}`
+3. `POST /sandboxes/{sandbox_id}/sessions/create`
+4. `DELETE /sandboxes/{sandbox_id}/sessions/{session_id}`
+5. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/invite`
+6. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/kick`
+7. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/mount`
+8. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/unmount`
+9. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/attach`
+10. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/append`
+11. `POST /sandboxes/{sandbox_id}/sessions/{session_id}/break`
+
+Admin/testing access to Brain-shaped APIs:
+
+1. `POST /sandboxes/{sandbox_id}/tree/...`
+2. `POST /sandboxes/{sandbox_id}/brain/identity/...`
+3. `POST /sandboxes/{sandbox_id}/brain/session/...`
+
+### 22.2 Sandbox Port
+
+The sandbox port is the normal `Brain -> Memory` path for one sandbox.
+
+Base endpoints:
+
+1. `GET /health`
+2. `GET /help`
+
+Generic tree APIs over registered resources, identities, humans, native, and sessions:
+
+1. `POST /tree/view`
+2. `POST /tree/read`
+3. `POST /tree/search`
+4. `POST /tree/write`
+5. `POST /tree/append`
+6. `POST /tree/delete`
+
+Identity Brain APIs:
+
+1. `POST /identity/profile`
+2. `POST /identity/relations`
+3. `POST /identity/sessions`
+4. `POST /identity/memorables-search`
+
+Session Brain APIs:
+
+1. `POST /session/recent`
+2. `POST /session/search`
+3. `POST /session/latest-attachments`
+
+### 22.3 Auth Mode
+
+Like the rest of Hydrai:
+
+1. `dev` mode bypasses internal auth intentionally
+2. `secure` mode requires valid Hydrai internal tokens on both control and sandbox ports
+
+### 22.4 Concurrency Rule
+
+The service layer should preserve the already stated practical rule:
+
+1. reads may run in parallel
+2. writes should be serialized conservatively per sandbox
+3. parallelism across different sandboxes is preferred

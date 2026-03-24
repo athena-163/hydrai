@@ -14,6 +14,9 @@ dependencies = [
     "PyYAML>=6.0",
 ]
 
+[project.scripts]
+hydrai-memory = "hydrai_memory.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

@@ -22,7 +22,12 @@ class SessionStore:
         self.sandbox_root = os.path.join(self.storage_root, "sandboxes", self.sandbox_id)
         self.sessions_root = os.path.join(self.sandbox_root, "sessions")
         self.session_kwargs = dict(session_kwargs)
-        self.identity_store = IdentityStore(storage_root, sandbox_id, embedder=self.session_kwargs.get("embedder"))
+        self.identity_store = IdentityStore(
+            storage_root,
+            sandbox_id,
+            embedder=self.session_kwargs.get("embedder"),
+            config_path=self.session_kwargs.get("config_path"),
+        )
         self.resource_registry = ResourceRegistry(self.sandbox_root)
         os.makedirs(self.sessions_root, exist_ok=True)
 

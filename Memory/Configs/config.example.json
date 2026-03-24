@@ -1,0 +1,12 @@
+{
+  "storage_root": "/Users/zeus/Public/hydrai",
+  "control_port": 62000,
+  "sandboxes": [
+    {
+      "id": "alpha",
+      "port": 62001,
+      "sandbox_space_root": "/Users/olympus",
+      "context_config_path": "/Users/zeus/Public/hydrai/Memory.Context.json"
+    }
+  ]
+}

@@ -1621,3 +1621,184 @@ However, any API that resolves a target participant persona, especially
 1. normal identities
 2. `human/`
 3. `native/`
+
+## 21. Session Management
+
+After the retained `SessionBook` primitive, `Memory` should provide a
+service-layer session management contract for one sandbox.
+
+This layer should:
+
+1. own system-space CRUD for sandbox-local sessions
+2. wrap participant and mount policy mutation
+3. wrap attachment ingress
+4. expose compact `Brain`-facing session APIs
+5. keep pending confirm/retry/rewind state explicitly out of scope
+
+### 21.1 Storage
+
+For one sandbox:
+
+```text
+root/sandboxes/<sandbox>/sessions/<session_id>/
+```
+
+Each session root is one `SessionBook`.
+
+### 21.2 System-Space CRUD
+
+At the management layer, Hydrai should provide:
+
+1. `list_sessions()`
+2. `create_session(id, identities, resources, channel="", brain=None, limits=None)`
+3. `get_session(id)`
+4. `delete_session(id)`
+5. `invite_identity(id, identity_id, mode)`
+6. `kick_identity(id, identity_id)`
+7. `mount_resource(id, resource_id, mode)`
+8. `unmount_resource(id, resource_id)`
+9. `attach_file(id, source_path, sender, summary="")`
+10. `append_turn(id, text)`
+11. `break_chapter(id)`
+
+Rules:
+
+1. `mode` is `rw` or `ro`
+2. session ids are unique within one sandbox
+3. participant ids are sandbox-local identity-like ids
+4. mounted resource ids must refer to registered sandbox resources
+5. delete is a hard delete of the session folder
+
+### 21.3 Identity-Like Participants
+
+Session membership is not limited to normal identities.
+
+Participants may be:
+
+1. normal identities
+2. `human/`
+3. `native/`
+
+The session layer only stores participant id to mode policy in
+`SessionBook/config.json`.
+
+Resolution of what those ids mean is owned by the higher `Memory`
+management layer.
+
+### 21.4 Mounted Resources
+
+Mounted resources are session-local references to sandbox resource registry
+entries.
+
+Rules:
+
+1. session config stores `resource_id -> mode`
+2. mounted resource ids must already exist in sandbox `resources.json`
+3. `SessionBook` owns only the mount map, not the resource registry itself
+4. mounted resources participate in Brain-facing session search
+
+### 21.5 Attachments
+
+Attachment ingress remains delegated to `SessionBook.attach()`.
+
+Rules:
+
+1. attachment import is the canonical committed-ingress path
+2. attachment files live under `attachments/`
+3. attachment summaries are ContexTree-managed semantic state
+4. attachment search results should naturally appear with paths such as
+   `attachments/0003.jpg`
+5. `attachments.next_serial` remains allocator state in `config.json`
+
+### 21.6 Brain-Facing Session APIs
+
+Hydrai should expose compact session tools to `Brain` with plain text
+query input. `Memory` should handle any embedding internally.
+
+#### 21.6.1 `session_recent`
+
+Input:
+
+1. `session_id`
+2. optional `query`
+3. optional `top_k`
+4. optional `min_score`
+
+Return:
+
+1. `context`
+2. `summary`
+3. `identities`
+4. `resources`
+5. optional `results`
+
+Meaning:
+
+1. without `query`, this is the current recent-context package
+2. with `query`, `Memory` should embed the text internally and return the
+   normal `SessionBook.query()` package including semantic `results`
+
+#### 21.6.2 `session_search_text`
+
+Input:
+
+1. `session_id`
+2. `query`
+3. optional `top_k`
+4. optional `min_score`
+
+Search scope:
+
+1. the session root itself, which includes chapters and `attachments/`
+2. every currently mounted resource root for that session
+
+Return:
+
+1. ranked merged hits with:
+   1. `source_type`: `session` or `resource`
+   2. `source_id`: session id or resource id
+   3. `path`
+   4. `summary`
+   5. `score`
+
+Rules:
+
+1. session-tree hits use the normal ContexTree relative path, for example
+   `000003.log` or `attachments/0003.jpg`
+2. mounted resource hits use the mounted resource tree relative path
+3. per-root search results must be merged and globally re-sorted by score
+4. final truncation to `top_k` happens after merge-and-rerank
+
+#### 21.6.3 `session_latest_attachments`
+
+Input:
+
+1. `session_id`
+2. optional `limit`
+
+Return:
+
+1. newest-first attachment records with:
+   1. `tag`
+   2. `path`
+   3. `summary`
+
+### 21.7 Relationship To SessionBook
+
+This service layer should remain thin.
+
+`SessionBook` still owns:
+
+1. chapter logs
+2. chapter rotation and recovery
+3. committed attachment import
+4. recent-context assembly
+5. session-local semantic search over its own tree
+
+The session manager layer adds:
+
+1. CRUD/discovery
+2. participant and mount validation
+3. resource-registry integration
+4. merged search across session plus mounted resources
+5. compact `Brain`-facing API shaping

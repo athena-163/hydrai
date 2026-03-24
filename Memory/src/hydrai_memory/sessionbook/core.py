@@ -402,7 +402,7 @@ class SessionBook:
             cfg["resources"].pop(resource_id, None)
             self._save_config(cfg)
 
-    def query(self, query_embed: str | None = None, top_k: int = 10) -> dict:
+    def query(self, query_embed: str | None = None, top_k: int = 10, min_score: float = 0.3) -> dict:
         cfg = self._load_config()
         identities = cfg.get("identities", {})
         resources = cfg.get("resources", {})
@@ -466,7 +466,11 @@ class SessionBook:
             "resources": resources,
         }
         if query_embed is not None:
-            result["results"] = self.tree.search_by_embedding(query_embed, top_k=top_k).get("results", [])
+            result["results"] = self.tree.search_by_embedding(
+                query_embed,
+                top_k=top_k,
+                min_score=min_score,
+            ).get("results", [])
         return result
 
     def chapter_info(self, chapter: str) -> dict | None:

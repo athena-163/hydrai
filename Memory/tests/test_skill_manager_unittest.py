@@ -73,6 +73,18 @@ class SkillManagerTests(unittest.TestCase):
             self.assertEqual(read["results"][0]["category"], "shortlist")
             self.assertIn("<skill name=\"context\"", read["results"][0]["prompt_text"])
 
+    def test_skill_whitelist_filters_visible_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_root = os.path.join(tmp, "memory")
+            self._make_identity(storage_root, {"skills": {"whitelist": ["context"]}})
+            manager = SkillManager(storage_root, "alpha")
+            manager.initialize_defaults()
+
+            listing = manager.skill_list("athena")["results"]
+            self.assertEqual({item["name"] for item in listing}, {"context"})
+            self.assertEqual(manager.skill_search("athena", "attachments")["results"], [])
+            self.assertEqual(manager.skill_read("athena", "attachments")["results"], [])
+
     def test_install_skill_from_trusted_site(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage_root = os.path.join(tmp, "memory")

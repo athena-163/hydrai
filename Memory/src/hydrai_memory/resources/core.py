@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import threading
+from datetime import datetime, timezone
 from typing import Any
 
 from hydrai_memory.contexttree import ContexTree, MaintenanceHandle, start_registered_maintenance
@@ -46,6 +48,14 @@ def _summary_for_root(root: str) -> str:
     return summary if isinstance(summary, str) else ""
 
 
+def _normalize_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    return None
+
+
 class ResourceRegistry:
     """Manage one sandbox's registered resources."""
 
@@ -66,6 +76,7 @@ class ResourceRegistry:
     def _empty_config(self) -> dict[str, Any]:
         return {
             "default_maintain_interval_sec": self.default_maintain_interval_sec,
+            "default_git_auto_commit_daily": False,
             "resources": {},
         }
 
@@ -86,8 +97,12 @@ class ResourceRegistry:
         default_interval = _normalize_interval(data.get("default_maintain_interval_sec"))
         if default_interval is None:
             default_interval = self.default_maintain_interval_sec
+        default_git = _normalize_bool(data.get("default_git_auto_commit_daily"))
+        if default_git is None:
+            default_git = False
         return {
             "default_maintain_interval_sec": default_interval,
+            "default_git_auto_commit_daily": default_git,
             "resources": resources,
         }
 
@@ -109,6 +124,13 @@ class ResourceRegistry:
         data["default_maintain_interval_sec"] = interval
         self._save(data)
 
+    def set_default_git_auto_commit_daily(self, enabled: bool) -> None:
+        if not isinstance(enabled, bool):
+            raise ValueError("default git auto commit setting must be boolean")
+        data = self._load()
+        data["default_git_auto_commit_daily"] = enabled
+        self._save(data)
+
     def register_resource(
         self,
         resource_id: str,
@@ -117,6 +139,7 @@ class ResourceRegistry:
         resource_type: str = "context_tree",
         config_path: str = "",
         maintain_interval_sec: float | None = None,
+        git_auto_commit_daily: bool | None = None,
     ) -> dict[str, Any]:
         resource_id = _validate_resource_id(resource_id)
         resource_root = os.path.realpath(root)
@@ -131,6 +154,8 @@ class ResourceRegistry:
             "root": resource_root,
             "config_path": os.path.realpath(config_path) if config_path else "",
             "maintain_interval_sec": interval,
+            "git_auto_commit_daily": _normalize_bool(git_auto_commit_daily),
+            "git_last_commit_date": str(data.get("resources", {}).get(resource_id, {}).get("git_last_commit_date") or ""),
         }
         self._save(data)
         return self.get_resource(resource_id)
@@ -152,6 +177,12 @@ class ResourceRegistry:
         if interval is None:
             return float(default_interval)
         return interval
+
+    def _effective_git_auto_commit(self, entry: dict[str, Any], default_enabled: bool) -> bool:
+        enabled = _normalize_bool(entry.get("git_auto_commit_daily"))
+        if enabled is None:
+            return bool(default_enabled)
+        return enabled
 
     def _status_for_entry(self, resource_id: str, entry: dict[str, Any]) -> dict[str, Any]:
         handle = self._handles.get(resource_id)
@@ -179,6 +210,12 @@ class ResourceRegistry:
                 entry,
                 data.get("default_maintain_interval_sec", self.default_maintain_interval_sec),
             ),
+            "git_auto_commit_daily": _normalize_bool(entry.get("git_auto_commit_daily")),
+            "effective_git_auto_commit_daily": self._effective_git_auto_commit(
+                entry,
+                bool(data.get("default_git_auto_commit_daily", False)),
+            ),
+            "git_last_commit_date": str(entry.get("git_last_commit_date") or ""),
             "summary": _summary_for_root(root) if resource_type == "context_tree" and os.path.isdir(root) else "",
             "maintenance": self._status_for_entry(resource_id, entry),
         }
@@ -255,6 +292,75 @@ class ResourceRegistry:
                 results.append(refreshed)
         return results
 
+    def _git_repo_root(self, root: str) -> str:
+        marker = os.path.join(root, ".git")
+        return root if os.path.isdir(marker) else ""
+
+    def _run_git(self, cwd: str, args: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def _run_daily_git_automation(self, resource_id: str) -> dict[str, Any]:
+        item = self.get_resource(resource_id)
+        if item is None:
+            raise FileNotFoundError(f"unknown resource: {resource_id}")
+        repo_root = self._git_repo_root(str(item.get("root") or ""))
+        if not repo_root:
+            return {"ok": False, "reason": "no_git_repo"}
+        if not bool(item.get("effective_git_auto_commit_daily")):
+            return {"ok": False, "reason": "disabled"}
+        today = datetime.now(timezone.utc).date().isoformat()
+        if str(item.get("git_last_commit_date") or "") == today:
+            return {"ok": False, "reason": "already_ran_today"}
+
+        add = self._run_git(repo_root, ["add", "-A"])
+        if add.returncode != 0:
+            return {"ok": False, "reason": "git_add_failed", "stderr": add.stderr.strip()}
+        diff = self._run_git(repo_root, ["diff", "--cached", "--quiet"])
+        if diff.returncode == 0:
+            self._mark_git_last_commit_date(resource_id, today)
+            return {"ok": True, "reason": "no_changes", "date": today}
+        if diff.returncode not in {0, 1}:
+            return {"ok": False, "reason": "git_diff_failed", "stderr": diff.stderr.strip()}
+
+        message = f"Hydrai daily checkpoint {today}"
+        commit = self._run_git(repo_root, ["commit", "-m", message])
+        if commit.returncode != 0:
+            return {"ok": False, "reason": "git_commit_failed", "stderr": commit.stderr.strip()}
+
+        push = self._run_git(repo_root, ["push"])
+        if push.returncode != 0:
+            return {"ok": False, "reason": "git_push_failed", "stderr": push.stderr.strip()}
+
+        self._mark_git_last_commit_date(resource_id, today)
+        return {"ok": True, "reason": "pushed", "date": today}
+
+    def _mark_git_last_commit_date(self, resource_id: str, date_text: str) -> None:
+        data = self._load()
+        entry = data.get("resources", {}).get(resource_id)
+        if not isinstance(entry, dict):
+            return
+        entry["git_last_commit_date"] = date_text
+        self._save(data)
+
+    def run_git_automation(self, resource_id: str = "") -> list[dict[str, Any]]:
+        targets = [resource_id] if resource_id else [item["id"] for item in self.list_resources()]
+        results: list[dict[str, Any]] = []
+        with self._lock:
+            for item_id in targets:
+                try:
+                    status = self._run_daily_git_automation(item_id)
+                except Exception as exc:
+                    status = {"ok": False, "reason": str(exc) or "git_automation_failed"}
+                status["id"] = item_id
+                results.append(status)
+        return results
+
     def start_watchdog(self, interval: float = 60.0) -> None:
         if self._watchdog_thread is not None and self._watchdog_thread.is_alive():
             raise RuntimeError("resource watchdog already running")
@@ -281,6 +387,10 @@ class ResourceRegistry:
         while not self._watchdog_stop.is_set():
             try:
                 self.reconcile_maintenance()
+            except Exception:
+                pass
+            try:
+                self.run_git_automation()
             except Exception:
                 pass
             self._watchdog_stop.wait(timeout=self._watchdog_interval)

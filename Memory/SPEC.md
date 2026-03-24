@@ -1206,6 +1206,9 @@ Fields:
 3. `resources[resource_id].root`: absolute sandbox-space root or file path
 4. `resources[resource_id].config_path`: optional config path for managed tree behavior
 5. `resources[resource_id].maintain_interval_sec`: optional per-resource override; `0` disables maintenance for that resource
+6. `default_git_auto_commit_daily`: optional sandbox default for daily git automation on git-backed resource roots
+7. `resources[resource_id].git_auto_commit_daily`: optional per-resource override for daily git automation
+8. `resources[resource_id].git_last_commit_date`: last successful daily git automation date
 
 ### 18.4 V1 Resource Types
 
@@ -1243,7 +1246,8 @@ That means:
 
 1. global default maintenance interval is registry state
 2. per-resource maintenance override is registry state
-3. local `.PROMPT.json` remains for summary/model/prompt overrides only
+3. optional git automation policy for git-backed roots is also registry state
+4. local `.PROMPT.json` remains for summary/model/prompt overrides only
 
 ### 18.7 Maintenance Execution Model
 
@@ -1258,6 +1262,9 @@ So:
 
 This should include an internal watchdog loop that periodically calls
 maintenance reconciliation for the sandbox registry.
+
+It may also run optional daily git automation for git-backed resource roots
+when registry policy enables it.
 
 `Nerve` may supervise whether the `Memory` service itself is alive, but it
 should not own per-resource maintenance health checks.
@@ -1887,6 +1894,11 @@ Admin/testing access to Brain-shaped APIs:
 2. `POST /sandboxes/{sandbox_id}/brain/identity/...`
 3. `POST /sandboxes/{sandbox_id}/brain/session/...`
 4. `POST /sandboxes/{sandbox_id}/brain/skills/...`
+
+Skill management helpers:
+
+1. `GET /sandboxes/{sandbox_id}/skills/trusted-sites`
+2. `POST /sandboxes/{sandbox_id}/skills/initialize`
 
 ### 22.2 Sandbox Port
 

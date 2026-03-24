@@ -2,6 +2,7 @@ import os
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 from hydrai_memory.contexttree import ContexTree
 from hydrai_memory.resources import MemorySandboxAPI, ResourceRegistry
@@ -135,6 +136,56 @@ class ResourceRegistryTests(unittest.TestCase):
                 self.assertTrue(item["maintenance"]["running"])
             finally:
                 registry.stop_all_maintenance()
+
+    def test_run_git_automation_skips_when_disabled_or_no_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sandbox_root = os.path.join(tmp, "sandboxes", "alpha")
+            os.makedirs(sandbox_root, exist_ok=True)
+            resource_root = os.path.join(tmp, "sandbox-home", "workspace")
+            os.makedirs(resource_root, exist_ok=True)
+            registry = ResourceRegistry(sandbox_root)
+            registry.register_resource("workspace-main", resource_root, maintain_interval_sec=0.05)
+
+            result = registry.run_git_automation("workspace-main")[0]
+            self.assertEqual(result["reason"], "no_git_repo")
+
+            os.makedirs(os.path.join(resource_root, ".git"), exist_ok=True)
+            result = registry.run_git_automation("workspace-main")[0]
+            self.assertEqual(result["reason"], "disabled")
+
+    def test_run_git_automation_commits_once_per_day_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sandbox_root = os.path.join(tmp, "sandboxes", "alpha")
+            os.makedirs(sandbox_root, exist_ok=True)
+            resource_root = os.path.join(tmp, "sandbox-home", "workspace")
+            os.makedirs(os.path.join(resource_root, ".git"), exist_ok=True)
+            registry = ResourceRegistry(sandbox_root)
+            registry.register_resource("workspace-main", resource_root, git_auto_commit_daily=True)
+
+            calls: list[list[str]] = []
+
+            def fake_run(cwd: str, args: list[str]):
+                calls.append(list(args))
+
+                class Result:
+                    def __init__(self, returncode: int, stderr: str = ""):
+                        self.returncode = returncode
+                        self.stderr = stderr
+
+                if args[:3] == ["diff", "--cached", "--quiet"]:
+                    return Result(1)
+                return Result(0)
+
+            with mock.patch.object(registry, "_run_git", side_effect=fake_run):
+                first = registry.run_git_automation("workspace-main")[0]
+                second = registry.run_git_automation("workspace-main")[0]
+
+            self.assertTrue(first["ok"])
+            self.assertEqual(first["reason"], "pushed")
+            self.assertEqual(second["reason"], "already_ran_today")
+            self.assertEqual(calls[0], ["add", "-A"])
+            self.assertIn(["commit", "-m", mock.ANY], calls)
+            self.assertIn(["push"], calls)
 
 
 class MemorySandboxAPITests(unittest.TestCase):

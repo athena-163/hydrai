@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 from hydrai_memory.contexttree.core import ContexTree
 
@@ -68,6 +69,47 @@ class ContexTreeIntegrationTests(unittest.TestCase):
             self.tree._resolve_summary_policy(media_dir),
         )
         self.assertTrue(summary.strip())
+
+    def test_live_prompt_override_changes_text_summary_behavior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            nested = root / "docs"
+            nested.mkdir(parents=True)
+            config_path = root / "contextree.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "intelligence": {
+                            "base_url": "http://127.0.0.1",
+                            "text_port": 61102,
+                            "image_port": 61101,
+                            "video_port": 61201,
+                            "embedder_port": 61100,
+                        },
+                        "limits": {
+                            "text_max_bytes": 65536,
+                            "image_max_bytes": 1024 * 1024,
+                            "video_max_bytes": 10 * 1024 * 1024,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (nested / ".PROMPT.json").write_text(
+                json.dumps(
+                    {
+                        "prompts": {
+                            "text_summary": "Reply with exactly the text HYDRAI_TEXT_OVERRIDE."
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            text_path = nested / "sample.txt"
+            text_path.write_text("This content should be ignored if the override prompt is honored.", encoding="utf-8")
+            tree = ContexTree(str(root), config_path=str(config_path))
+            summary = tree._summarize_text_file(str(text_path), tree._resolve_summary_policy(str(nested)))
+            self.assertIn("HYDRAI_TEXT_OVERRIDE", summary)
 
 
 if __name__ == "__main__":

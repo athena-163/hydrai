@@ -31,6 +31,7 @@ Sandbox port:
 3. `POST /tree/...`
 4. `POST /identity/...`
 5. `POST /session/...`
+6. `POST /skills/...`
 
 Security:
 

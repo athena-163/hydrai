@@ -1886,6 +1886,7 @@ Admin/testing access to Brain-shaped APIs:
 1. `POST /sandboxes/{sandbox_id}/tree/...`
 2. `POST /sandboxes/{sandbox_id}/brain/identity/...`
 3. `POST /sandboxes/{sandbox_id}/brain/session/...`
+4. `POST /sandboxes/{sandbox_id}/brain/skills/...`
 
 ### 22.2 Sandbox Port
 
@@ -1917,6 +1918,14 @@ Session Brain APIs:
 1. `POST /session/recent`
 2. `POST /session/search`
 3. `POST /session/latest-attachments`
+
+Skill Brain APIs:
+
+1. `POST /skills/list`
+2. `POST /skills/search`
+3. `POST /skills/read`
+4. `POST /skills/trusted-sites`
+5. `POST /skills/install`
 
 ### 22.3 Auth Mode
 

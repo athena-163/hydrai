@@ -7,6 +7,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from hydrai_memory.skillset.manager import TrustedSkillHub
+
 
 @dataclass(frozen=True)
 class SandboxConfig:
@@ -21,6 +23,7 @@ class ServiceConfig:
     config_path: str
     storage_root: str
     control_port: int
+    trusted_skill_hubs: tuple[TrustedSkillHub, ...]
     sandboxes: tuple[SandboxConfig, ...]
 
 
@@ -85,10 +88,34 @@ def load_config(path: str) -> ServiceConfig:
         if port != 0:
             seen_ports.add(port)
 
+    raw_hubs = data.get("trusted_skill_hubs", [])
+    if not isinstance(raw_hubs, list):
+        raise ValueError("trusted_skill_hubs must be a list")
+    trusted_hubs: list[TrustedSkillHub] = []
+    seen_hub_ids: set[str] = set()
+    for item in raw_hubs:
+        if not isinstance(item, dict):
+            raise ValueError("trusted skill hub entries must be objects")
+        hub_id = _require_token(item.get("id"), "trusted_skill_hubs.id")
+        if hub_id in seen_hub_ids:
+            raise ValueError(f"duplicate trusted skill hub id: {hub_id}")
+        trusted_hubs.append(
+            TrustedSkillHub(
+                hub_id=hub_id,
+                index_url=str(item.get("index_url") or "").strip(),
+                site_url=str(item.get("site_url") or "").strip(),
+                description=str(item.get("description") or "").strip(),
+            )
+        )
+        if not trusted_hubs[-1].index_url:
+            raise ValueError(f"trusted skill hub index_url is required: {hub_id}")
+        seen_hub_ids.add(hub_id)
+
     os.makedirs(storage_root, exist_ok=True)
     return ServiceConfig(
         config_path=config_path,
         storage_root=storage_root,
         control_port=control_port,
+        trusted_skill_hubs=tuple(trusted_hubs),
         sandboxes=tuple(sandboxes),
     )

@@ -3,7 +3,7 @@
 from hydrai_memory.identity_state import IdentityBrainAPI, IdentityState, IdentityStore
 from hydrai_memory.resources import MemorySandboxAPI, ResourceRegistry
 from hydrai_memory.sessionbook import SessionBook, SessionBrainAPI, SessionStore
-from hydrai_memory.skillset import SkillSet
+from hydrai_memory.skillset import SkillManager, SkillSet, TrustedSkillHub
 
 __all__ = [
     "IdentityBrainAPI",
@@ -14,5 +14,7 @@ __all__ = [
     "SessionBook",
     "SessionBrainAPI",
     "SessionStore",
+    "SkillManager",
     "SkillSet",
+    "TrustedSkillHub",
 ]

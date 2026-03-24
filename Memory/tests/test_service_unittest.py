@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -29,12 +30,48 @@ class MemoryServiceHttpTests(unittest.TestCase):
             sandbox_home = os.path.join(tmp, "sandbox-home")
             resource_root = os.path.join(sandbox_home, "workspace")
             os.makedirs(resource_root, exist_ok=True)
+            archive_root = Path(tmp) / "archive-src" / "demo-skill"
+            archive_root.mkdir(parents=True, exist_ok=True)
+            (archive_root / "SKILL.md").write_text(
+                "---\nname: demo-skill\ndescription: Installed demo skill.\n---\n\n# Demo\nUse this installed skill.\n",
+                encoding="utf-8",
+            )
+            archive_path = Path(tmp) / "demo-skill.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                for current_root, _dirnames, filenames in os.walk(archive_root.parent):
+                    for filename in filenames:
+                        full = Path(current_root) / filename
+                        archive.write(full, full.relative_to(archive_root.parent))
+            hub_index = Path(tmp) / "hub-index.json"
+            hub_index.write_text(
+                json.dumps(
+                    {
+                        "skills": [
+                            {
+                                "name": "demo-skill",
+                                "summary": "Installed demo skill.",
+                                "archive_url": archive_path.as_uri(),
+                                "version": "1.0.0",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
             config_path = os.path.join(tmp, "Memory.json")
             with open(config_path, "w", encoding="utf-8") as handle:
                 json.dump(
                     {
                         "storage_root": storage_root,
                         "control_port": 0,
+                        "trusted_skill_hubs": [
+                            {
+                                "id": "trusted",
+                                "index_url": hub_index.as_uri(),
+                                "site_url": "https://skills.example.test/",
+                                "description": "Trusted test hub",
+                            }
+                        ],
                         "sandboxes": [
                             {
                                 "id": "alpha",
@@ -135,6 +172,38 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     )
                     self.assertEqual(profile["persona"], "Strategist")
                     self.assertEqual(profile["soul"], "Core self")
+
+                    skill_sites = _request_json("POST", sandbox_base + "/skills/trusted-sites", {})
+                    self.assertEqual(skill_sites["results"][0]["id"], "trusted")
+
+                    skill_listing = _request_json(
+                        "POST",
+                        sandbox_base + "/skills/list",
+                        {"identity_id": "athena"},
+                    )
+                    self.assertTrue(any(item["category"] == "shortlist" and item["name"] == "context" for item in skill_listing["results"]))
+
+                    installed_skill = _request_json(
+                        "POST",
+                        sandbox_base + "/skills/install",
+                        {
+                            "identity_id": "athena",
+                            "hub_id": "trusted",
+                            "skill_name": "demo-skill",
+                        },
+                    )
+                    self.assertEqual(installed_skill["name"], "demo-skill")
+
+                    skill_read = _request_json(
+                        "POST",
+                        sandbox_base + "/skills/read",
+                        {
+                            "identity_id": "athena",
+                            "name": "demo-skill",
+                            "category": "user",
+                        },
+                    )
+                    self.assertEqual(skill_read["results"][0]["category"], "user")
 
                     attachment_path = os.path.join(tmp, "diagram.jpg")
                     Path(attachment_path).write_bytes(b"jpeg")

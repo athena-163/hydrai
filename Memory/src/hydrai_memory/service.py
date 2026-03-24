@@ -13,6 +13,7 @@ from hydrai_memory.config import SandboxConfig, ServiceConfig
 from hydrai_memory.identity_state import IdentityBrainAPI, IdentityStore
 from hydrai_memory.resources import MemorySandboxAPI, ResourceRegistry
 from hydrai_memory.sessionbook import SessionBrainAPI, SessionStore
+from hydrai_memory.skillset import SkillManager
 
 LOG = logging.getLogger("hydrai_memory.service")
 
@@ -46,6 +47,13 @@ class SandboxRuntime:
             config_path=self.sandbox_config.context_config_path or None,
         )
         self.session_brain = SessionBrainAPI(self.session_store)
+        self.skill_manager = SkillManager(
+            self.service_config.storage_root,
+            self.sandbox_config.sandbox_id,
+            trusted_hubs=self.service_config.trusted_skill_hubs,
+            config_path=self.sandbox_config.context_config_path or None,
+        )
+        self.skill_manager.initialize_defaults()
         self.tree_api_control = MemorySandboxAPI(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
@@ -96,6 +104,11 @@ class SandboxRuntime:
                 "session_recent": "POST /session/recent",
                 "session_search": "POST /session/search",
                 "session_latest_attachments": "POST /session/latest-attachments",
+                "skill_list": "POST /skills/list",
+                "skill_search": "POST /skills/search",
+                "skill_read": "POST /skills/read",
+                "trusted_skill_sites": "POST /skills/trusted-sites",
+                "skill_install": "POST /skills/install",
             },
         }
 
@@ -193,6 +206,15 @@ class MemoryService:
                     "context_config_path": item.sandbox_config.context_config_path,
                 }
                 for item in self._sandboxes.values()
+            ],
+            "trusted_skill_hubs": [
+                {
+                    "id": hub.hub_id,
+                    "index_url": hub.index_url,
+                    "site_url": hub.site_url,
+                    "description": hub.description,
+                }
+                for hub in self._config.trusted_skill_hubs
             ],
             "usage": {
                 "startup": "hydrai-memory --config ~/Public/hydrai/Memory.json",
@@ -302,6 +324,36 @@ class MemoryService:
             )
         raise HttpError(404, "not found")
 
+    def _dispatch_skill_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
+        manager = sandbox.skill_manager
+        if action == "list":
+            return manager.skill_list(str(body.get("identity_id") or ""))
+        if action == "search":
+            return manager.skill_search(
+                str(body.get("identity_id") or ""),
+                str(body.get("query") or ""),
+                limit=int(body.get("limit", 10)),
+                min_score=float(body.get("min_score", 0.3)),
+            )
+        if action == "read":
+            return manager.skill_read(
+                str(body.get("identity_id") or ""),
+                str(body.get("name") or ""),
+                category=str(body.get("category") or ""),
+            )
+        if action == "trusted-sites":
+            return {"results": manager.list_trusted_sites()}
+        if action == "install":
+            return sandbox.mutate(
+                lambda: manager.install_skill(
+                    str(body.get("identity_id") or ""),
+                    str(body.get("hub_id") or ""),
+                    str(body.get("skill_name") or ""),
+                    force=bool(body.get("force", False)),
+                )
+            )
+        raise HttpError(404, "not found")
+
     def _dispatch_control_get(self, parts: list[str]) -> Any:
         if parts == ["health"]:
             return {"status": "ok", "service": "memory", "port": self._control_server.server_address[1] if self._control_server else self._config.control_port}
@@ -357,6 +409,8 @@ class MemoryService:
                 if item is None:
                     raise HttpError(404, "unknown session")
                 return item
+            if rest == ["skills", "trusted-sites"]:
+                return {"results": sandbox.skill_manager.list_trusted_sites()}
         raise HttpError(404, "not found")
 
     def _dispatch_control_post(self, parts: list[str], body: dict[str, Any]) -> Any:
@@ -370,6 +424,8 @@ class MemoryService:
             return self._dispatch_identity_brain(sandbox, rest[2], body)
         if len(rest) == 3 and rest[0] == "brain" and rest[1] == "session":
             return self._dispatch_session_brain(sandbox, rest[2], body)
+        if len(rest) == 3 and rest[0] == "brain" and rest[1] == "skills":
+            return self._dispatch_skill_brain(sandbox, rest[2], body)
         if rest == ["resources", "register"]:
             return sandbox.mutate(
                 lambda: sandbox.resource_registry.register_resource(
@@ -491,6 +547,8 @@ class MemoryService:
             )
         if len(rest) == 3 and rest[0] == "sessions" and rest[2] == "break":
             return sandbox.mutate(lambda: sandbox.session_store.break_chapter(rest[1]))
+        if rest == ["skills", "initialize"]:
+            return sandbox.mutate(lambda: sandbox.skill_manager.initialize_defaults())
         raise HttpError(404, "not found")
 
     def _dispatch_control_delete(self, parts: list[str]) -> Any:
@@ -520,6 +578,8 @@ class MemoryService:
             return self._dispatch_identity_brain(sandbox, parts[1], body)
         if len(parts) == 2 and parts[0] == "session":
             return self._dispatch_session_brain(sandbox, parts[1], body)
+        if len(parts) == 2 and parts[0] == "skills":
+            return self._dispatch_skill_brain(sandbox, parts[1], body)
         raise HttpError(404, "not found")
 
     def _make_control_handler(self):

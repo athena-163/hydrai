@@ -1,6 +1,14 @@
 {
   "storage_root": "/Users/zeus/Public/hydrai",
   "control_port": 62000,
+  "trusted_skill_hubs": [
+    {
+      "id": "clawhub",
+      "index_url": "https://example.com/skills/index.json",
+      "site_url": "https://example.com/skills/",
+      "description": "Example trusted skill hub"
+    }
+  ],
   "sandboxes": [
     {
       "id": "alpha",

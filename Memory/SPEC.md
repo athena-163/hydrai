@@ -1352,3 +1352,188 @@ This layer should not enforce:
 3. writable-vs-readonly session semantics
 
 Those are higher-level `Brain` or service-control concerns.
+
+## 19. Normal Identity Management
+
+For the next `Memory` service-layer slice, focus should stay on normal
+identities only.
+
+This section intentionally excludes:
+
+1. `human/`
+2. `native/`
+
+Those may follow later with lighter contracts.
+
+### 19.1 Core Role
+
+Normal identity management should own:
+
+1. system-space CRUD for normal identity roots
+2. compact `Brain`-facing identity APIs
+3. translation from service-layer calls to `IdentityState`
+
+It should not duplicate generic tree view/search/read behavior already covered
+by the resource-style sandbox API layer.
+
+### 19.2 Storage Position
+
+Per sandbox:
+
+1. `root/sandboxes/<sandbox>/identities/<identity_id>/`
+
+Each such root is one `IdentityState`.
+
+### 19.3 System-Space CRUD Surface
+
+Following the useful AIOS `Gateway` pattern, normal identity management should
+expose a straightforward CRUD/store surface inside `Memory`.
+
+Initial system-space operations should be:
+
+1. `list_identities()`
+2. `create_identity(identity_id, persona, soul, config)`
+3. `get_identity(identity_id)`
+4. `delete_identity(identity_id)`
+5. `set_identity_persona(identity_id, content)`
+6. `set_identity_soul(identity_id, content)`
+7. `set_identity_config(identity_id, config)`
+
+Rules:
+
+1. `identity_id`, `persona`, and `soul` are required on creation
+2. `config` is also provided on creation and may be `{}` when empty
+3. delete is a hard delete of the whole identity root
+
+### 19.4 Identity Summary Shape
+
+For listing and simple `get` responses, the current useful identity summary
+shape should be:
+
+1. `id`
+2. `persona`
+3. `soul`
+4. `config`
+
+More detailed continuity and memory state belongs to the compact `Brain` APIs
+below rather than to basic CRUD responses.
+
+### 19.5 Brain-Facing Identity APIs
+
+The `Brain`-facing surface should stay compact and semantic.
+
+The initial normal-identity APIs should be:
+
+1. `identity_profile(identity_id)`
+2. `identity_relations(identity_id, friend_ids)`
+3. `identity_sessions(identity_id, session_ids)`
+4. `identity_memorables_search(identity_id, query, top_content_n, top_summary_k, min_score=0.3)`
+
+These should be library/service operations inside `Memory`, not generic raw tree
+reads.
+
+### 19.6 `identity_profile`
+
+Input:
+
+1. `identity_id`
+
+Returns:
+
+1. `persona`
+2. `soul`
+3. `self_dynamic`
+4. `friends`: list of `{id, summary}`
+5. `sessions`: list of `{id, summary}`
+
+Meaning:
+
+1. `self_dynamic` is `dynamics/self.md`
+2. friend summaries come from `.SUMMARY.json` entries for `dynamics/<friend>.md`
+3. session summaries come from `.SUMMARY.json` entries for `ongoing/<session>.md`
+4. if a friend or session summary is missing, the item should still be returned with empty `summary`
+
+### 19.7 `identity_relations`
+
+Input:
+
+1. `identity_id`
+2. `friend_ids`
+
+Returns:
+
+1. `persona_map`: `{friend_id: persona}`
+2. `dynamic_map`: `{friend_id: content}`
+
+Meaning:
+
+1. `persona_map` is read from each asked friend's `PERSONA.md`
+2. `dynamic_map` is read from the target identity's `dynamics/<friend>.md`
+3. unknown or unavailable `friend_ids` should be ignored rather than failing the whole call
+
+### 19.8 `identity_sessions`
+
+Input:
+
+1. `identity_id`
+2. `session_ids`
+
+Returns:
+
+1. `ongoing_map`: `{session_id: content}`
+
+Meaning:
+
+1. values come from `ongoing/<session_id>.md`
+2. unknown or unavailable `session_ids` should be ignored rather than failing the whole call
+
+### 19.9 `identity_memorables_search`
+
+Input:
+
+1. `identity_id`
+2. `query`
+3. `top_content_n`
+4. `top_summary_k`
+5. optional `min_score`
+
+Returns:
+
+1. `best_contents`: list of `{name, score, content}`
+2. `more_summaries`: list of `{name, score, summary}`
+
+Behavior:
+
+1. caller provides plain text query only
+2. `Memory` internally converts the query to an embedding through its local embedder
+3. search is constrained to `memorables/`
+4. the search is a wrapper around the underlying `ContexTree.search...` path rather than a separate memory primitive
+5. the strongest `top_content_n` hits return full memorable file contents
+6. the next `top_summary_k` hits return summaries only
+
+### 19.10 Relationship To Resource APIs
+
+Identity-specific APIs should not duplicate the generic resource-style tree
+operations already provided elsewhere.
+
+So:
+
+1. generic `view`, `search`, and `read` stay with the sandbox tree API layer
+2. identity management adds only compact semantic identity accessors and CRUD
+
+### 19.11 What To Keep From AIOS
+
+Keep:
+
+1. simple system-space CRUD shape for normal identities
+2. separate persona/soul/config mutation endpoints or methods
+3. one durable root per normal identity
+
+### 19.12 What To Change For Hydrai
+
+Change:
+
+1. build on `IdentityState`, not AIOS `AgentFile`
+2. keep `Brain` identity access compact instead of exposing many small raw methods
+3. avoid duplicating generic tree read/search/view APIs
+4. defer `human/` and `native/` management until later

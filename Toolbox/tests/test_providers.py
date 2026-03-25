@@ -33,3 +33,11 @@ class ToolboxProviderTests(unittest.TestCase):
         draft = provider.draft(["a@b.c"], "s", "b", account="athena")
         self.assertTrue(draft["ok"])
         self.assertTrue(Path(draft["path"]).is_file())
+
+    def test_himalaya_send_treats_sent_copy_append_failure_as_warning(self):
+        provider = HimalayaEmailProvider(bin_name="himalaya")
+        stderr = "cannot add IMAP message: unexpected NO response: Folder not exist"
+        with mock.patch.object(provider, "_run", return_value=(1, "", stderr)):
+            result = provider.send(["a@b.c"], "s", "b", account="athena")
+        self.assertTrue(result["ok"])
+        self.assertIn("Folder not exist", result["warning"])

@@ -72,6 +72,10 @@ class HimalayaEmailProvider:
         )
         return proc.returncode, proc.stdout, proc.stderr
 
+    def _sent_copy_append_failed(self, stdout: str, stderr: str) -> bool:
+        text = f"{stdout}\n{stderr}".lower()
+        return "cannot add imap message" in text or "folder not exist" in text
+
     def search(self, query: str, limit: int = 10, account: str = "", folder: str = "") -> dict:
         cmd = self._base_cmd(account) + ["envelope", "list", "--output", "json", "--page-size", str(max(1, int(limit)))]
         cmd = self._with_account(cmd, account)
@@ -159,6 +163,9 @@ class HimalayaEmailProvider:
         cmd = self._with_account(cmd, account)
         code, out, err = self._run(cmd, stdin_text=template)
         if code != 0:
+            if self._sent_copy_append_failed(out, err):
+                warning = err.strip() or out.strip() or "message delivered but sent copy append failed"
+                return {"ok": True, "warning": warning}
             return {"error": f"email send failed: {err.strip() or out.strip()}"}
         return {"ok": True}
 

@@ -106,12 +106,38 @@ Directionally, `Toolbox.json` should look like:
             "mode": "ro"
           }
         ]
+      },
+      {
+        "address": "hydrai@gmail.com",
+        "backend": "gmail_oauth",
+        "backend_ref": "hydrai_gmail",
+        "display_name": "Hydrai Gmail",
+        "grants": [
+          {
+            "sandbox_id": "olympus",
+            "identity_id": "athena",
+            "mode": "rw"
+          }
+        ]
       }
     ],
     "backends": {
       "himalaya": {
         "bin_name": "himalaya",
         "timeout_sec": 60
+      },
+      "gmail_oauth": {
+        "hydrai_gmail": {
+          "email": "hydrai@gmail.com",
+          "credentials_path": "/Users/zeus/Public/hydrai/google-client.json",
+          "token_path": "/Users/zeus/Public/hydrai/google-token.json",
+          "timeout_sec": 60,
+          "scopes": [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
+            "https://www.googleapis.com/auth/gmail.compose"
+          ]
+        }
       }
     }
   }
@@ -182,6 +208,7 @@ Initial v1 backend types:
 
 1. `himalaya`
 2. `imap_smtp`
+3. `gmail_oauth`
 
 Future backend types may include:
 

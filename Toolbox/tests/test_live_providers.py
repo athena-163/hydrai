@@ -5,7 +5,7 @@ import shutil
 import time
 import unittest
 
-from hydrai_toolbox.providers import BraveWebSearchProvider, HimalayaEmailProvider, ImapSmtpEmailProvider
+from hydrai_toolbox.providers import BraveWebSearchProvider, GmailOAuthEmailProvider, HimalayaEmailProvider, ImapSmtpEmailProvider
 
 
 def _live_enabled() -> bool:
@@ -79,3 +79,38 @@ class ToolboxLiveProviderTests(unittest.TestCase):
         read = provider.read(search["messages"][0]["id"])
         self.assertNotIn("error", read)
         self.assertIn("Subject:", read["body"])
+
+    def test_live_gmail_oauth_search_read_and_send(self):
+        client = "/Users/zeus/Public/hydrai/google-client-ton3zon.json"
+        token = "/Users/zeus/Public/hydrai/google-token-ton3zon.json"
+        if not os.path.isfile(client) or not os.path.isfile(token):
+            self.skipTest("gmail_oauth client/token files are not present")
+        provider = GmailOAuthEmailProvider(
+            email="ton3zon@gmail.com",
+            credentials_path=client,
+            token_path=token,
+            scopes=(
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/gmail.compose",
+            ),
+            timeout=45,
+        )
+        search = provider.search("", limit=3)
+        self.assertNotIn("error", search)
+        self.assertTrue(search.get("messages"))
+        read = provider.read(search["messages"][0]["id"])
+        self.assertNotIn("error", read)
+        self.assertIn("Subject:", read["body"])
+
+        recipient = os.environ.get("HYDRAI_TEST_GMAIL_TO", "").strip()
+        if not recipient:
+            self.skipTest("HYDRAI_TEST_GMAIL_TO is not set")
+        subject = f"[hydrai-toolbox-gmail-live-test] {int(time.time())}"
+        send = provider.send(
+            [recipient],
+            subject,
+            "Hydrai Toolbox Gmail OAuth live send verification.",
+        )
+        self.assertNotIn("error", send)
+        self.assertTrue(send.get("ok"))

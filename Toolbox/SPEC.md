@@ -181,14 +181,18 @@ entries.
 Initial v1 backend types:
 
 1. `himalaya`
+2. `imap_smtp`
 
 Future backend types may include:
 
-1. `imap_smtp`
-2. `gmail_oauth`
-3. `m365_graph`
+1. `gmail_oauth`
+2. `m365_graph`
 
 Caller APIs must not change when backend type changes.
+
+`imap_smtp` should support direct IMAP and SMTP settings plus optional IMAP
+`ID` fields for providers such as NetEase `163.com` that require RFC2971-style
+client identification before `SELECT`.
 
 ## 6. Control Port Endpoints
 

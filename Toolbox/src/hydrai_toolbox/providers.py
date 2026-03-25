@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import imaplib
 import os
 import shlex
+import smtplib
 import subprocess
 import tempfile
 import tomllib
@@ -12,6 +14,10 @@ import urllib.parse
 import urllib.request
 import uuid
 from dataclasses import dataclass
+from email import message_from_bytes
+from email.message import EmailMessage
+from email.parser import BytesParser
+from email.policy import default
 
 
 @dataclass
@@ -92,9 +98,11 @@ class HimalayaEmailProvider:
             return {"error": "email search returned invalid JSON"}
         return {"messages": envelopes}
 
-    def read(self, message_id: str, account: str = "") -> dict:
+    def read(self, message_id: str, account: str = "", folder: str = "") -> dict:
         cmd = self._base_cmd(account) + ["message", "read", str(message_id)]
         cmd = self._with_account(cmd, account)
+        if folder:
+            cmd += ["--folder", folder]
         code, out, err = self._run(cmd)
         if code != 0:
             return {"error": f"email read failed: {err.strip() or out.strip()}"}
@@ -192,4 +200,206 @@ class HimalayaEmailProvider:
         draft_path = os.path.join(draft_dir, f"{draft_id}.eml")
         with open(draft_path, "w", encoding="utf-8") as handle:
             handle.write(template)
+        return {"ok": True, "draft_id": draft_id, "path": draft_path}
+
+
+@dataclass
+class ImapSmtpEmailProvider:
+    email: str
+    login: str
+    password_env: str
+    imap_host: str
+    imap_port: int
+    imap_tls: bool = True
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_tls: bool = True
+    timeout: int = 60
+    inbox_folder: str = "INBOX"
+    sent_folder: str = "Sent"
+    drafts_folder: str = "Drafts"
+    trash_folder: str = "Trash"
+    imap_id: dict[str, str] | None = None
+
+    def _password(self) -> str:
+        value = os.environ.get(self.password_env, "").strip()
+        if not value:
+            raise RuntimeError(f"missing password env: {self.password_env}")
+        return value
+
+    def _imap(self) -> imaplib.IMAP4:
+        if self.imap_tls:
+            client = imaplib.IMAP4_SSL(self.imap_host, self.imap_port)
+        else:
+            client = imaplib.IMAP4(self.imap_host, self.imap_port)
+        client.login(self.login, self._password())
+        if self.imap_id:
+            payload = "(" + " ".join(f'"{key}" "{value}"' for key, value in self.imap_id.items()) + ")"
+            client.xatom("ID", payload)
+        return client
+
+    def _smtp(self) -> smtplib.SMTP:
+        if self.smtp_tls:
+            client = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=self.timeout)
+        else:
+            client = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=self.timeout)
+            client.ehlo()
+            client.starttls()
+            client.ehlo()
+        client.login(self.login, self._password())
+        return client
+
+    def _criteria(self, query: str) -> list[str]:
+        terms = shlex.split(str(query or ""))
+        criteria: list[str] = []
+        for term in terms:
+            lowered = term.lower()
+            if lowered == "seen":
+                criteria.append("SEEN")
+                continue
+            if lowered == "unseen":
+                criteria.append("UNSEEN")
+                continue
+            if ":" in term:
+                key, value = term.split(":", 1)
+                value = value.strip()
+                if not value:
+                    continue
+                key = key.lower().strip()
+                if key == "from":
+                    criteria.extend(["FROM", f'"{value}"'])
+                    continue
+                if key == "to":
+                    criteria.extend(["TO", f'"{value}"'])
+                    continue
+                if key == "subject":
+                    criteria.extend(["SUBJECT", f'"{value}"'])
+                    continue
+                if key == "since":
+                    criteria.extend(["SINCE", value])
+                    continue
+                if key == "before":
+                    criteria.extend(["BEFORE", value])
+                    continue
+            criteria.extend(["TEXT", f'"{term}"'])
+        return criteria or ["ALL"]
+
+    def search(self, query: str, limit: int = 10, account: str = "", folder: str = "") -> dict:
+        _ = account
+        box = folder or self.inbox_folder
+        client = self._imap()
+        try:
+            typ, data = client.select(box)
+            if typ != "OK":
+                return {"error": f"email search failed: cannot select folder {box}"}
+            typ, data = client.uid("SEARCH", None, *self._criteria(query))
+            if typ != "OK":
+                return {"error": "email search failed: search rejected"}
+            uids = [item for item in (data[0] or b"").decode("utf-8", "ignore").split() if item]
+            selected = list(reversed(uids))[: max(1, int(limit))]
+            messages: list[dict] = []
+            for uid in selected:
+                typ, fetch_data = client.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])")
+                if typ != "OK" or not fetch_data:
+                    continue
+                raw = b""
+                for item in fetch_data:
+                    if isinstance(item, tuple) and len(item) == 2 and isinstance(item[1], (bytes, bytearray)):
+                        raw += bytes(item[1])
+                parsed = BytesParser(policy=default).parsebytes(raw)
+                messages.append(
+                    {
+                        "id": uid,
+                        "subject": str(parsed.get("Subject", "")),
+                        "from": str(parsed.get("From", "")),
+                        "to": str(parsed.get("To", "")),
+                        "date": str(parsed.get("Date", "")),
+                        "folder": box,
+                    }
+                )
+            return {"messages": messages}
+        finally:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+    def read(self, message_id: str, account: str = "", folder: str = "") -> dict:
+        _ = account
+        box = folder or self.inbox_folder
+        client = self._imap()
+        try:
+            typ, data = client.select(box)
+            if typ != "OK":
+                return {"error": f"email read failed: cannot select folder {box}"}
+            typ, fetch_data = client.uid("FETCH", str(message_id), "(RFC822)")
+            if typ != "OK" or not fetch_data:
+                return {"error": f"email read failed: unknown message id {message_id}"}
+            raw = b""
+            for item in fetch_data:
+                if isinstance(item, tuple) and len(item) == 2 and isinstance(item[1], (bytes, bytearray)):
+                    raw += bytes(item[1])
+            if not raw:
+                return {"error": f"email read failed: unknown message id {message_id}"}
+            parsed = message_from_bytes(raw, policy=default)
+            text = parsed.as_string()
+            return {"id": str(message_id), "body": text, "folder": box}
+        finally:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+    def send(
+        self,
+        to: list[str],
+        subject: str,
+        body: str,
+        account: str = "",
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+    ) -> dict:
+        _ = account
+        msg = EmailMessage()
+        msg["From"] = self.email
+        msg["To"] = ", ".join(to)
+        msg["Subject"] = subject
+        if cc:
+            msg["Cc"] = ", ".join(cc)
+        if bcc:
+            msg["Bcc"] = ", ".join(bcc)
+        msg.set_content(body)
+        recipients = [addr for addr in [*to, *(cc or []), *(bcc or [])] if addr]
+        client = self._smtp()
+        try:
+            client.send_message(msg, from_addr=self.email, to_addrs=recipients)
+            return {"ok": True}
+        finally:
+            try:
+                client.quit()
+            except Exception:
+                pass
+
+    def draft(
+        self,
+        to: list[str],
+        subject: str,
+        body: str,
+        account: str = "",
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+    ) -> dict:
+        _ = account
+        lines = [f"From: {self.email}", f"To: {', '.join(to)}", f"Subject: {subject}"]
+        if cc:
+            lines.append(f"Cc: {', '.join(cc)}")
+        if bcc:
+            lines.append(f"Bcc: {', '.join(bcc)}")
+        lines += ["", body]
+        draft_id = str(uuid.uuid4())
+        draft_dir = os.path.join(tempfile.gettempdir(), "hydrai-toolbox-email-drafts")
+        os.makedirs(draft_dir, exist_ok=True)
+        draft_path = os.path.join(draft_dir, f"{draft_id}.eml")
+        with open(draft_path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines))
         return {"ok": True, "draft_id": draft_id, "path": draft_path}

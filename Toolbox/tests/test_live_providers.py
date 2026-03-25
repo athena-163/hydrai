@@ -5,7 +5,7 @@ import shutil
 import time
 import unittest
 
-from hydrai_toolbox.providers import BraveWebSearchProvider, HimalayaEmailProvider
+from hydrai_toolbox.providers import BraveWebSearchProvider, HimalayaEmailProvider, ImapSmtpEmailProvider
 
 
 def _live_enabled() -> bool:
@@ -46,3 +46,36 @@ class ToolboxLiveProviderTests(unittest.TestCase):
         )
         self.assertNotIn("error", send)
         self.assertTrue(send.get("ok"))
+
+    def test_live_163_imap_search_and_read(self):
+        password = os.environ.get("tokenian_athena_163_com", "").strip()
+        if not password:
+            self.skipTest("tokenian_athena_163_com is not set")
+        provider = ImapSmtpEmailProvider(
+            email="tokenian_athena@163.com",
+            login="tokenian_athena@163.com",
+            password_env="tokenian_athena_163_com",
+            imap_host="imap.163.com",
+            imap_port=993,
+            imap_tls=True,
+            smtp_host="smtp.163.com",
+            smtp_port=465,
+            smtp_tls=True,
+            timeout=45,
+            inbox_folder="INBOX",
+            sent_folder="已发送",
+            drafts_folder="草稿箱",
+            trash_folder="已删除",
+            imap_id={
+                "name": "Hydrai Toolbox",
+                "version": "0.1",
+                "vendor": "Hydrai",
+                "contact": "tokenian_athena@163.com",
+            },
+        )
+        search = provider.search(query="", limit=3)
+        self.assertNotIn("error", search)
+        self.assertTrue(search.get("messages"))
+        read = provider.read(search["messages"][0]["id"])
+        self.assertNotIn("error", read)
+        self.assertIn("Subject:", read["body"])

@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from hydrai_toolbox.auth import InternalAuthGate
 from hydrai_toolbox.config import MailboxConfig, ServiceConfig
-from hydrai_toolbox.providers import BraveWebSearchProvider, HimalayaEmailProvider
+from hydrai_toolbox.providers import BraveWebSearchProvider, HimalayaEmailProvider, ImapSmtpEmailProvider
 
 LOG = logging.getLogger("hydrai_toolbox.service")
 _PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -217,13 +217,32 @@ class ToolboxService:
                 return
         raise PermissionError("mailbox access denied")
 
-    def _email_provider(self, mailbox: MailboxConfig) -> HimalayaEmailProvider:
-        if mailbox.backend != "himalaya":
-            raise ValueError(f"unsupported email backend: {mailbox.backend}")
-        return HimalayaEmailProvider(
-            bin_name=self._config.email.himalaya.bin_name,
-            timeout=self._config.email.himalaya.timeout_sec,
-        )
+    def _email_provider(self, mailbox: MailboxConfig) -> HimalayaEmailProvider | ImapSmtpEmailProvider:
+        if mailbox.backend == "himalaya":
+            return HimalayaEmailProvider(
+                bin_name=self._config.email.himalaya.bin_name,
+                timeout=self._config.email.himalaya.timeout_sec,
+            )
+        if mailbox.backend == "imap_smtp":
+            backend = self._config.email.imap_smtp[mailbox.backend_ref]
+            return ImapSmtpEmailProvider(
+                email=backend.email,
+                login=backend.login,
+                password_env=backend.password_env,
+                imap_host=backend.imap_host,
+                imap_port=backend.imap_port,
+                imap_tls=backend.imap_tls,
+                smtp_host=backend.smtp_host,
+                smtp_port=backend.smtp_port,
+                smtp_tls=backend.smtp_tls,
+                timeout=backend.timeout_sec,
+                inbox_folder=backend.inbox_folder,
+                sent_folder=backend.sent_folder,
+                drafts_folder=backend.drafts_folder,
+                trash_folder=backend.trash_folder,
+                imap_id=backend.imap_id,
+            )
+        raise ValueError(f"unsupported email backend: {mailbox.backend}")
 
     def _mailbox_lock(self, mailbox: MailboxConfig) -> threading.Lock:
         ref = mailbox.backend_ref
@@ -252,7 +271,11 @@ class ToolboxService:
         if not message_id:
             raise ValueError("message_id is required")
         provider = self._email_provider(mailbox)
-        result = provider.read(message_id=message_id, account=mailbox.backend_ref)
+        result = provider.read(
+            message_id=message_id,
+            account=mailbox.backend_ref,
+            folder=str(body.get("folder") or ""),
+        )
         if "error" in result:
             raise HttpError(502, str(result["error"]))
         return result

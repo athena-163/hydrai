@@ -38,9 +38,29 @@ class HimalayaBackendConfig:
 
 
 @dataclass(frozen=True)
+class ImapSmtpBackendConfig:
+    email: str
+    login: str
+    password_env: str
+    imap_host: str
+    imap_port: int
+    imap_tls: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_tls: bool
+    timeout_sec: int
+    inbox_folder: str
+    sent_folder: str
+    drafts_folder: str
+    trash_folder: str
+    imap_id: dict[str, str]
+
+
+@dataclass(frozen=True)
 class EmailConfig:
     mailboxes: tuple[MailboxConfig, ...]
     himalaya: HimalayaBackendConfig
+    imap_smtp: dict[str, ImapSmtpBackendConfig]
 
 
 @dataclass(frozen=True)
@@ -120,7 +140,7 @@ def _load_email(raw: Any) -> EmailConfig:
         if address in seen_addresses:
             raise ValueError(f"duplicate mailbox address: {address}")
         backend = _require_non_empty_string(item.get("backend"), f"email.mailboxes[{address}].backend")
-        if backend != "himalaya":
+        if backend not in {"himalaya", "imap_smtp"}:
             raise ValueError(f"unsupported email backend: {backend}")
         backend_ref = _require_non_empty_string(item.get("backend_ref"), f"email.mailboxes[{address}].backend_ref")
         display_name = str(item.get("display_name") or "").strip()
@@ -159,10 +179,41 @@ def _load_email(raw: Any) -> EmailConfig:
     himalaya = backends.get("himalaya")
     if not isinstance(himalaya, dict):
         raise ValueError("email.backends.himalaya must be an object")
+    raw_imap_smtp = backends.get("imap_smtp", {})
+    if not isinstance(raw_imap_smtp, dict):
+        raise ValueError("email.backends.imap_smtp must be an object")
+    imap_smtp: dict[str, ImapSmtpBackendConfig] = {}
+    for ref, item in raw_imap_smtp.items():
+        if not isinstance(item, dict):
+            raise ValueError(f"email.backends.imap_smtp.{ref} must be an object")
+        raw_id = item.get("imap_id", {})
+        if not isinstance(raw_id, dict):
+            raise ValueError(f"email.backends.imap_smtp.{ref}.imap_id must be an object")
+        imap_smtp[str(ref)] = ImapSmtpBackendConfig(
+            email=_require_non_empty_string(item.get("email"), f"email.backends.imap_smtp.{ref}.email"),
+            login=_require_non_empty_string(item.get("login"), f"email.backends.imap_smtp.{ref}.login"),
+            password_env=_require_non_empty_string(item.get("password_env"), f"email.backends.imap_smtp.{ref}.password_env"),
+            imap_host=_require_non_empty_string(item.get("imap_host"), f"email.backends.imap_smtp.{ref}.imap_host"),
+            imap_port=_require_int(item.get("imap_port"), f"email.backends.imap_smtp.{ref}.imap_port"),
+            imap_tls=bool(item.get("imap_tls", True)),
+            smtp_host=_require_non_empty_string(item.get("smtp_host"), f"email.backends.imap_smtp.{ref}.smtp_host"),
+            smtp_port=_require_int(item.get("smtp_port"), f"email.backends.imap_smtp.{ref}.smtp_port"),
+            smtp_tls=bool(item.get("smtp_tls", True)),
+            timeout_sec=_require_positive_int(item.get("timeout_sec", 60), f"email.backends.imap_smtp.{ref}.timeout_sec"),
+            inbox_folder=str(item.get("inbox_folder") or "INBOX"),
+            sent_folder=str(item.get("sent_folder") or "Sent"),
+            drafts_folder=str(item.get("drafts_folder") or "Drafts"),
+            trash_folder=str(item.get("trash_folder") or "Trash"),
+            imap_id={str(key): str(value) for key, value in raw_id.items() if str(key).strip() and str(value).strip()},
+        )
+    for mailbox in mailboxes:
+        if mailbox.backend == "imap_smtp" and mailbox.backend_ref not in imap_smtp:
+            raise ValueError(f"unknown imap_smtp backend_ref for {mailbox.address}: {mailbox.backend_ref}")
     return EmailConfig(
         mailboxes=tuple(mailboxes),
         himalaya=HimalayaBackendConfig(
             bin_name=_require_non_empty_string(himalaya.get("bin_name", "himalaya"), "email.backends.himalaya.bin_name"),
             timeout_sec=_require_positive_int(himalaya.get("timeout_sec", 60), "email.backends.himalaya.timeout_sec"),
         ),
+        imap_smtp=imap_smtp,
     )

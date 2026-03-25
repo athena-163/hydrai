@@ -177,3 +177,86 @@ class ToolboxServiceTests(unittest.TestCase):
                     ctx.exception.close()
                 finally:
                     service.stop()
+
+    def test_service_supports_imap_smtp_mailbox(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "Toolbox.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "control_port": 0,
+                        "web_search": {
+                            "provider": "brave",
+                            "brave": {"key_env": "BRAVE_API_KEY", "timeout_sec": 15},
+                        },
+                        "email": {
+                            "mailboxes": [
+                                {
+                                    "address": "tokenian_athena@163.com",
+                                    "backend": "imap_smtp",
+                                    "backend_ref": "athena163",
+                                    "grants": [{"sandbox_id": "olympus", "identity_id": "athena", "mode": "rw"}],
+                                }
+                            ],
+                            "backends": {
+                                "himalaya": {"bin_name": "himalaya", "timeout_sec": 60},
+                                "imap_smtp": {
+                                    "athena163": {
+                                        "email": "tokenian_athena@163.com",
+                                        "login": "tokenian_athena@163.com",
+                                        "password_env": "tokenian_athena_163_com",
+                                        "imap_host": "imap.163.com",
+                                        "imap_port": 993,
+                                        "imap_tls": True,
+                                        "smtp_host": "smtp.163.com",
+                                        "smtp_port": 465,
+                                        "smtp_tls": True,
+                                        "timeout_sec": 60,
+                                        "inbox_folder": "INBOX",
+                                        "sent_folder": "已发送",
+                                        "drafts_folder": "草稿箱",
+                                        "trash_folder": "已删除",
+                                        "imap_id": {"name": "Hydrai Toolbox", "vendor": "Hydrai"},
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.dict(os.environ, {"HYDRAI_SECURITY_MODE": "dev"}, clear=False),
+                mock.patch("hydrai_toolbox.service.ImapSmtpEmailProvider.search", return_value={"messages": [{"id": "7"}]}),
+                mock.patch("hydrai_toolbox.service.ImapSmtpEmailProvider.read", return_value={"id": "7", "body": "hello", "folder": "INBOX"}),
+            ):
+                service = ToolboxService(load_config(str(config_path)), InternalAuthGate.from_env())
+                service.start()
+                try:
+                    port = service._server.server_address[1]
+                    base = f"http://127.0.0.1:{port}"
+                    search = _request_json(
+                        "POST",
+                        base + "/email/search",
+                        {
+                            "sandbox_id": "olympus",
+                            "identity_id": "athena",
+                            "address": "tokenian_athena@163.com",
+                            "query": "",
+                            "limit": 3,
+                        },
+                    )
+                    self.assertEqual(search["messages"][0]["id"], "7")
+                    read = _request_json(
+                        "POST",
+                        base + "/email/read",
+                        {
+                            "sandbox_id": "olympus",
+                            "identity_id": "athena",
+                            "address": "tokenian_athena@163.com",
+                            "message_id": "7",
+                        },
+                    )
+                    self.assertEqual(read["body"], "hello")
+                finally:
+                    service.stop()

@@ -5,6 +5,14 @@
 It runs in system space and exposes normalized internal APIs for credentialed
 tools such as web search and email.
 
+Email backends currently supported:
+
+1. `himalaya`
+2. `imap_smtp`
+
+`imap_smtp` is useful for providers like NetEase `163.com` that require an
+IMAP `ID` payload before opening folders.
+
 Startup:
 
 ```bash

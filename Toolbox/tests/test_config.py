@@ -81,3 +81,54 @@ class ToolboxConfigTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "duplicate mailbox address"):
                 load_config(str(path))
+
+    def test_load_config_accepts_imap_smtp_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Toolbox.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "control_port": 60000,
+                        "web_search": {
+                            "provider": "brave",
+                            "brave": {"key_env": "BRAVE_API_KEY", "timeout_sec": 15},
+                        },
+                        "email": {
+                            "mailboxes": [
+                                {
+                                    "address": "tokenian_athena@163.com",
+                                    "backend": "imap_smtp",
+                                    "backend_ref": "athena163",
+                                    "grants": [{"sandbox_id": "olympus", "identity_id": "athena", "mode": "rw"}],
+                                }
+                            ],
+                            "backends": {
+                                "himalaya": {"bin_name": "himalaya", "timeout_sec": 60},
+                                "imap_smtp": {
+                                    "athena163": {
+                                        "email": "tokenian_athena@163.com",
+                                        "login": "tokenian_athena@163.com",
+                                        "password_env": "tokenian_athena_163_com",
+                                        "imap_host": "imap.163.com",
+                                        "imap_port": 993,
+                                        "imap_tls": True,
+                                        "smtp_host": "smtp.163.com",
+                                        "smtp_port": 465,
+                                        "smtp_tls": True,
+                                        "timeout_sec": 60,
+                                        "inbox_folder": "INBOX",
+                                        "sent_folder": "已发送",
+                                        "drafts_folder": "草稿箱",
+                                        "trash_folder": "已删除",
+                                        "imap_id": {"name": "Hydrai Toolbox", "vendor": "Hydrai"},
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cfg = load_config(str(path))
+            self.assertEqual(cfg.email.mailboxes[0].backend, "imap_smtp")
+            self.assertEqual(cfg.email.imap_smtp["athena163"].imap_host, "imap.163.com")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
@@ -16,6 +17,7 @@ from hydrai_memory.sessionbook import SessionBrainAPI, SessionStore
 from hydrai_memory.skillset import SkillManager
 
 LOG = logging.getLogger("hydrai_memory.service")
+_PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 
 class HttpError(Exception):
@@ -27,6 +29,16 @@ class HttpError(Exception):
 
 def _split_path(path: str) -> list[str]:
     return [part for part in str(path or "").split("?")[0].split("/") if part]
+
+
+def _manual_path() -> str:
+    env_path = os.environ.get("HYDRAI_MEMORY_MANUAL_PATH", "").strip()
+    if env_path:
+        return os.path.realpath(os.path.expanduser(env_path))
+    candidate = os.path.join(_PACKAGE_ROOT, "MANUAL.md")
+    if os.path.isfile(candidate):
+        return candidate
+    return ""
 
 
 class SandboxRuntime:
@@ -89,6 +101,7 @@ class SandboxRuntime:
             "sandbox_space_root": self.sandbox_config.sandbox_space_root,
             "context_config_path": self.sandbox_config.context_config_path,
             "watchdog": self.resource_registry.watchdog_status(),
+            "manual_path": _manual_path(),
             "endpoints": {
                 "health": "GET /health",
                 "help": "GET /help",
@@ -198,6 +211,7 @@ class MemoryService:
             "security_mode": self._auth_gate.mode,
             "config_path": self._config.config_path,
             "storage_root": self._config.storage_root,
+            "manual_path": _manual_path(),
             "control_port": self._control_server.server_address[1] if self._control_server else self._config.control_port,
             "sandboxes": [
                 {

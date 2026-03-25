@@ -98,6 +98,10 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     self.assertEqual(help_payload["service"], "Hydrai Memory")
                     self.assertEqual(help_payload["sandboxes"][0]["id"], "alpha")
                     self.assertIn("watchdog", help_payload["sandboxes"][0])
+                    self.assertTrue(str(help_payload["manual_path"]).endswith("/Memory/MANUAL.md"))
+
+                    sandbox_help = _request_json("GET", sandbox_base + "/help")
+                    self.assertTrue(str(sandbox_help["manual_path"]).endswith("/Memory/MANUAL.md"))
 
                     registered = _request_json(
                         "POST",

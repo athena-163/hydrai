@@ -8,6 +8,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/hydrai/Memory
 Environment=HYDRAI_SECURITY_MODE=dev
+Environment=HYDRAI_MEMORY_MANUAL_PATH=/opt/hydrai/Memory/MANUAL.md
 ExecStart=/usr/local/bin/hydrai-memory --config /root/Public/hydrai/Memory.json
 Restart=always
 RestartSec=3

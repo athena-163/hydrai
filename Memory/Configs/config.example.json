@@ -1,6 +1,20 @@
 {
   "storage_root": "/Users/zeus/Public/hydrai",
   "control_port": 62000,
+  "context_defaults": {
+    "intelligence": {
+      "base_url": "http://127.0.0.1",
+      "text_port": 61102,
+      "image_port": 61101,
+      "video_port": 61201,
+      "embedder_port": 61100
+    },
+    "limits": {
+      "text_max_bytes": 65536,
+      "image_max_bytes": 1048576,
+      "video_max_bytes": 10485760
+    }
+  },
   "trusted_skill_hubs": [
     {
       "id": "clawhub",
@@ -13,8 +27,7 @@
     {
       "id": "alpha",
       "port": 62001,
-      "sandbox_space_root": "/Users/olympus",
-      "context_config_path": "/Users/zeus/Public/hydrai/Memory.Context.json"
+      "sandbox_space_root": "/Users/olympus"
     }
   ]
 }

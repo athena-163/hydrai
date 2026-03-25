@@ -608,9 +608,9 @@ Finer permission logic such as identity-level read/write policy belongs above
 
 ## 6. Model Backends for ContexTree
 
-`ContexTree`-backed features use a sandbox-global backend config from
-`Memory.Context.json`, with optional per-resource override through local
-`.PROMPT.json`.
+`ContexTree`-backed features use sandbox-global backend defaults from
+`Memory.json` under `context_defaults`, with optional per-resource override
+through local `.PROMPT.json`.
 
 On this machine, the current defaults are:
 

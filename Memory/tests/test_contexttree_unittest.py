@@ -61,6 +61,46 @@ class PromptConfigTests(unittest.TestCase):
             self.assertEqual(cfg.video_max_bytes, 4096)
             self.assertEqual(cfg.prompts["image_summary"], "Focus on diagrams.")
 
+    def test_load_summary_config_accepts_memory_json_context_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Memory.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "storage_root": "/tmp/hydrai",
+                        "control_port": 62000,
+                        "context_defaults": {
+                            "intelligence": {
+                                "base_url": "http://127.0.0.1",
+                                "text_port": 61102,
+                                "image_port": 61101,
+                                "video_port": 61201,
+                                "embedder_port": 61100,
+                            },
+                            "limits": {
+                                "text_max_bytes": 2048,
+                                "image_max_bytes": 4096,
+                                "video_max_bytes": 8192,
+                            },
+                        },
+                        "sandboxes": [
+                            {
+                                "id": "alpha",
+                                "port": 62001,
+                                "sandbox_space_root": "/Users/olympus",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cfg = load_summary_config(str(path))
+            self.assertEqual(cfg.text_port, 61102)
+            self.assertEqual(cfg.image_port, 61101)
+            self.assertEqual(cfg.video_port, 61201)
+            self.assertEqual(cfg.embedder_port, 61100)
+            self.assertEqual(cfg.text_max_bytes, 2048)
+
     def test_local_prompt_overrides_merge_parent_then_child(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "root"

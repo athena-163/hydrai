@@ -50,20 +50,20 @@ class SandboxRuntime:
         self.identity_store = IdentityStore(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
-            config_path=self.sandbox_config.context_config_path or None,
+            config_path=self.service_config.config_path,
         )
         self.identity_brain = IdentityBrainAPI(self.identity_store)
         self.session_store = SessionStore(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
-            config_path=self.sandbox_config.context_config_path or None,
+            config_path=self.service_config.config_path,
         )
         self.session_brain = SessionBrainAPI(self.session_store)
         self.skill_manager = SkillManager(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
             trusted_hubs=self.service_config.trusted_skill_hubs,
-            config_path=self.sandbox_config.context_config_path or None,
+            config_path=self.service_config.config_path,
         )
         self.skill_manager.initialize_defaults()
         self.tree_api_control = MemorySandboxAPI(
@@ -71,14 +71,14 @@ class SandboxRuntime:
             self.sandbox_config.sandbox_id,
             sandbox_space_root=self.sandbox_config.sandbox_space_root,
             system_access=True,
-            config_path=self.sandbox_config.context_config_path or None,
+            config_path=self.service_config.config_path,
         )
         self.tree_api_sandbox = MemorySandboxAPI(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
             sandbox_space_root=self.sandbox_config.sandbox_space_root,
             system_access=False,
-            config_path=self.sandbox_config.context_config_path or None,
+            config_path=self.service_config.config_path,
         )
         self.server: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
@@ -99,7 +99,7 @@ class SandboxRuntime:
             "port": actual_port,
             "storage_root": self.service_config.storage_root,
             "sandbox_space_root": self.sandbox_config.sandbox_space_root,
-            "context_config_path": self.sandbox_config.context_config_path,
+            "context_defaults_source": self.service_config.config_path,
             "watchdog": self.resource_registry.watchdog_status(),
             "manual_path": _manual_path(),
             "endpoints": {
@@ -218,7 +218,7 @@ class MemoryService:
                     "id": item.sandbox_config.sandbox_id,
                     "port": item.server.server_address[1] if item.server is not None else item.sandbox_config.port,
                     "sandbox_space_root": item.sandbox_config.sandbox_space_root,
-                    "context_config_path": item.sandbox_config.context_config_path,
+                    "context_defaults_source": self._config.config_path,
                     "watchdog": item.resource_registry.watchdog_status(),
                 }
                 for item in self._sandboxes.values()

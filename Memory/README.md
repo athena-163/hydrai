@@ -17,7 +17,6 @@ Config:
 
 - example: [`Configs/config.example.json`](/Users/zeus/Codebase/hydrai/Memory/Configs/config.example.json)
 - deployed root-level config: `~/Public/hydrai/Memory.json`
-- deployed ContexTree backend config: `~/Public/hydrai/Memory.Context.json`
 
 Control port:
 
@@ -42,9 +41,8 @@ Security:
 
 ContexTree defaults:
 
-1. global text/image/video/embedder routes and prompts come from the configured `context_config_path`
-2. the recommended live file is `~/Public/hydrai/Memory.Context.json`
-3. individual resources may override prompts, route ports, and byte limits via local `.PROMPT.json`
+1. global text/image/video/embedder routes and prompts live in `Memory.json` under `context_defaults`
+2. individual resources may override prompts, route ports, and byte limits via local `.PROMPT.json`
 
 Service templates:
 

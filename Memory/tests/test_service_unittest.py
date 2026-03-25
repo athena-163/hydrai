@@ -64,6 +64,15 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     {
                         "storage_root": storage_root,
                         "control_port": 0,
+                        "context_defaults": {
+                            "intelligence": {
+                                "base_url": "http://127.0.0.1",
+                                "text_port": 61102,
+                                "image_port": 61101,
+                                "video_port": 61201,
+                                "embedder_port": 61100
+                            }
+                        },
                         "trusted_skill_hubs": [
                             {
                                 "id": "trusted",
@@ -76,8 +85,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             {
                                 "id": "alpha",
                                 "port": 0,
-                                "sandbox_space_root": sandbox_home,
-                                "context_config_path": "",
+                                "sandbox_space_root": sandbox_home
                             }
                         ],
                     },
@@ -85,7 +93,12 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     indent=2,
                 )
 
-            with mock.patch.dict(os.environ, {"HYDRAI_SECURITY_MODE": "dev"}, clear=False):
+            with (
+                mock.patch.dict(os.environ, {"HYDRAI_SECURITY_MODE": "dev"}, clear=False),
+                mock.patch("hydrai_memory.contexttree.embedder.Embedder.embed", return_value=""),
+                mock.patch("hydrai_memory.contexttree.llm.LLMClient.summarize", return_value=""),
+                mock.patch("hydrai_memory.contexttree.llm.VLClient.summarize_media", return_value=""),
+            ):
                 service = MemoryService(load_config(config_path), InternalAuthGate.from_env())
                 service.start()
                 try:
@@ -95,12 +108,15 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     sandbox_base = f"http://127.0.0.1:{sandbox_port}"
 
                     help_payload = _request_json("GET", control_base + "/help")
+                    expected_config_path = os.path.realpath(config_path)
                     self.assertEqual(help_payload["service"], "Hydrai Memory")
                     self.assertEqual(help_payload["sandboxes"][0]["id"], "alpha")
                     self.assertIn("watchdog", help_payload["sandboxes"][0])
+                    self.assertEqual(help_payload["sandboxes"][0]["context_defaults_source"], expected_config_path)
                     self.assertTrue(str(help_payload["manual_path"]).endswith("/Memory/MANUAL.md"))
 
                     sandbox_help = _request_json("GET", sandbox_base + "/help")
+                    self.assertEqual(sandbox_help["context_defaults_source"], expected_config_path)
                     self.assertTrue(str(sandbox_help["manual_path"]).endswith("/Memory/MANUAL.md"))
 
                     registered = _request_json(
@@ -276,12 +292,20 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     {
                         "storage_root": storage_root,
                         "control_port": 0,
+                        "context_defaults": {
+                            "intelligence": {
+                                "base_url": "http://127.0.0.1",
+                                "text_port": 61102,
+                                "image_port": 61101,
+                                "video_port": 61201,
+                                "embedder_port": 61100
+                            }
+                        },
                         "sandboxes": [
                             {
                                 "id": "alpha",
                                 "port": 0,
-                                "sandbox_space_root": sandbox_home,
-                                "context_config_path": "",
+                                "sandbox_space_root": sandbox_home
                             }
                         ],
                     },
@@ -289,13 +313,18 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     indent=2,
                 )
 
-            with mock.patch.dict(
-                os.environ,
-                {
-                    "HYDRAI_SECURITY_MODE": "secure",
-                    "HYDRAI_INTERNAL_TOKENS_JSON": json.dumps({"memory": "secret"}),
-                },
-                clear=False,
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "HYDRAI_SECURITY_MODE": "secure",
+                        "HYDRAI_INTERNAL_TOKENS_JSON": json.dumps({"memory": "secret"}),
+                    },
+                    clear=False,
+                ),
+                mock.patch("hydrai_memory.contexttree.embedder.Embedder.embed", return_value=""),
+                mock.patch("hydrai_memory.contexttree.llm.LLMClient.summarize", return_value=""),
+                mock.patch("hydrai_memory.contexttree.llm.VLClient.summarize_media", return_value=""),
             ):
                 service = MemoryService(load_config(config_path), InternalAuthGate.from_env())
                 service.start()

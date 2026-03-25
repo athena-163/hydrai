@@ -36,11 +36,14 @@ class SummaryBackendConfig:
     prompts: dict[str, str]
 
 
-def load_summary_config(path: str) -> SummaryBackendConfig:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+def load_summary_config_from_data(data: dict) -> SummaryBackendConfig:
     if not isinstance(data, dict):
         raise ValueError("ContexTree config must be a JSON object")
+    if isinstance(data.get("context_defaults"), dict):
+        data = data["context_defaults"]
+
+    if not isinstance(data, dict):
+        raise ValueError("ContexTree config context_defaults must be an object")
 
     intelligence = data.get("intelligence", {})
     if not isinstance(intelligence, dict):
@@ -80,6 +83,12 @@ def load_summary_config(path: str) -> SummaryBackendConfig:
         video_max_bytes=_limit_or_default(limits, "video_max_bytes", 10 * 1024 * 1024),
         prompts=prompts,
     )
+
+
+def load_summary_config(path: str) -> SummaryBackendConfig:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return load_summary_config_from_data(data)
 
 
 def resolve_local_prompt_overrides(root: str, dir_path: str) -> dict:

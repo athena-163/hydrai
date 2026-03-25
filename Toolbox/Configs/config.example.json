@@ -1,0 +1,43 @@
+{
+  "control_port": 60000,
+  "web_search": {
+    "provider": "brave",
+    "brave": {
+      "key_env": "BRAVE_API_KEY",
+      "timeout_sec": 15
+    }
+  },
+  "email": {
+    "mailboxes": [
+      {
+        "address": "athena@example.com",
+        "backend": "himalaya",
+        "backend_ref": "athena",
+        "display_name": "Athena Mail",
+        "grants": [
+          {
+            "sandbox_id": "olympus",
+            "identity_id": "athena",
+            "mode": "rw"
+          },
+          {
+            "sandbox_id": "olympus",
+            "identity_id": "zeus",
+            "mode": "ro"
+          },
+          {
+            "sandbox_id": "apollo",
+            "identity_id": "athena",
+            "mode": "ro"
+          }
+        ]
+      }
+    ],
+    "backends": {
+      "himalaya": {
+        "bin_name": "himalaya",
+        "timeout_sec": 60
+      }
+    }
+  }
+}

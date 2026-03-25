@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hydrai.toolbox</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/hydrai-toolbox</string>
+    <string>--config</string>
+    <string>/Users/zeus/Public/hydrai/Toolbox.json</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HYDRAI_SECURITY_MODE</key>
+    <string>dev</string>
+    <key>BRAVE_API_KEY</key>
+    <string>REPLACE_ME</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/zeus/Public/hydrai</string>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/hydrai-toolbox.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/hydrai-toolbox.err.log</string>
+</dict>
+</plist>

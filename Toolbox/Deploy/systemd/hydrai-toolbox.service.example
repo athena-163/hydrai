@@ -1,0 +1,17 @@
+[Unit]
+Description=Hydrai Toolbox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hydrai/Toolbox
+Environment=HYDRAI_SECURITY_MODE=dev
+Environment=BRAVE_API_KEY=REPLACE_ME
+ExecStart=/usr/local/bin/hydrai-toolbox --config /root/Public/hydrai/Toolbox.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

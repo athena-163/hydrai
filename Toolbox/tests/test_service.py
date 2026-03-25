@@ -260,3 +260,74 @@ class ToolboxServiceTests(unittest.TestCase):
                     self.assertEqual(read["body"], "hello")
                 finally:
                     service.stop()
+
+    def test_service_supports_gmail_oauth_mailbox(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "Toolbox.json"
+            credentials = Path(tmp) / "client.json"
+            token = Path(tmp) / "token.json"
+            credentials.write_text("{}", encoding="utf-8")
+            token.write_text("{}", encoding="utf-8")
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "control_port": 0,
+                        "web_search": {
+                            "provider": "brave",
+                            "brave": {"key_env": "BRAVE_API_KEY", "timeout_sec": 15},
+                        },
+                        "email": {
+                            "mailboxes": [
+                                {
+                                    "address": "hydrai@gmail.com",
+                                    "backend": "gmail_oauth",
+                                    "backend_ref": "hydrai_gmail",
+                                    "grants": [{"sandbox_id": "olympus", "identity_id": "athena", "mode": "rw"}],
+                                }
+                            ],
+                            "backends": {
+                                "himalaya": {"bin_name": "himalaya", "timeout_sec": 60},
+                                "gmail_oauth": {
+                                    "hydrai_gmail": {
+                                        "email": "hydrai@gmail.com",
+                                        "credentials_path": str(credentials),
+                                        "token_path": str(token),
+                                        "timeout_sec": 60,
+                                        "scopes": [
+                                            "https://www.googleapis.com/auth/gmail.readonly",
+                                            "https://www.googleapis.com/auth/gmail.send"
+                                        ]
+                                    }
+                                },
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.dict(os.environ, {"HYDRAI_SECURITY_MODE": "dev"}, clear=False),
+                mock.patch("hydrai_toolbox.service.GmailOAuthEmailProvider.search", return_value={"messages": [{"id": "g1"}]}),
+                mock.patch("hydrai_toolbox.service.GmailOAuthEmailProvider.read", return_value={"id": "g1", "body": "hello"}),
+                mock.patch("hydrai_toolbox.service.GmailOAuthEmailProvider.send", return_value={"ok": True, "id": "g1"}),
+                mock.patch("hydrai_toolbox.service.GmailOAuthEmailProvider.draft", return_value={"ok": True, "draft_id": "d1"}),
+            ):
+                service = ToolboxService(load_config(str(config_path)), InternalAuthGate.from_env())
+                service.start()
+                try:
+                    port = service._server.server_address[1]
+                    base = f"http://127.0.0.1:{port}"
+                    search = _request_json(
+                        "POST",
+                        base + "/email/search",
+                        {"sandbox_id": "olympus", "identity_id": "athena", "address": "hydrai@gmail.com", "query": "from:test"},
+                    )
+                    self.assertEqual(search["messages"][0]["id"], "g1")
+                    read = _request_json(
+                        "POST",
+                        base + "/email/read",
+                        {"sandbox_id": "olympus", "identity_id": "athena", "address": "hydrai@gmail.com", "message_id": "g1"},
+                    )
+                    self.assertEqual(read["body"], "hello")
+                finally:
+                    service.stop()

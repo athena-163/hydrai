@@ -57,10 +57,20 @@ class ImapSmtpBackendConfig:
 
 
 @dataclass(frozen=True)
+class GmailOAuthBackendConfig:
+    email: str
+    credentials_path: str
+    token_path: str
+    timeout_sec: int
+    scopes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class EmailConfig:
     mailboxes: tuple[MailboxConfig, ...]
     himalaya: HimalayaBackendConfig
     imap_smtp: dict[str, ImapSmtpBackendConfig]
+    gmail_oauth: dict[str, GmailOAuthBackendConfig]
 
 
 @dataclass(frozen=True)
@@ -140,7 +150,7 @@ def _load_email(raw: Any) -> EmailConfig:
         if address in seen_addresses:
             raise ValueError(f"duplicate mailbox address: {address}")
         backend = _require_non_empty_string(item.get("backend"), f"email.mailboxes[{address}].backend")
-        if backend not in {"himalaya", "imap_smtp"}:
+        if backend not in {"himalaya", "imap_smtp", "gmail_oauth"}:
             raise ValueError(f"unsupported email backend: {backend}")
         backend_ref = _require_non_empty_string(item.get("backend_ref"), f"email.mailboxes[{address}].backend_ref")
         display_name = str(item.get("display_name") or "").strip()
@@ -209,6 +219,31 @@ def _load_email(raw: Any) -> EmailConfig:
     for mailbox in mailboxes:
         if mailbox.backend == "imap_smtp" and mailbox.backend_ref not in imap_smtp:
             raise ValueError(f"unknown imap_smtp backend_ref for {mailbox.address}: {mailbox.backend_ref}")
+    raw_gmail_oauth = backends.get("gmail_oauth", {})
+    if not isinstance(raw_gmail_oauth, dict):
+        raise ValueError("email.backends.gmail_oauth must be an object")
+    gmail_oauth: dict[str, GmailOAuthBackendConfig] = {}
+    default_scopes = (
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.send",
+        "https://www.googleapis.com/auth/gmail.compose",
+    )
+    for ref, item in raw_gmail_oauth.items():
+        if not isinstance(item, dict):
+            raise ValueError(f"email.backends.gmail_oauth.{ref} must be an object")
+        raw_scopes = item.get("scopes", list(default_scopes))
+        if not isinstance(raw_scopes, list) or not raw_scopes:
+            raise ValueError(f"email.backends.gmail_oauth.{ref}.scopes must be a non-empty list")
+        gmail_oauth[str(ref)] = GmailOAuthBackendConfig(
+            email=_require_non_empty_string(item.get("email"), f"email.backends.gmail_oauth.{ref}.email"),
+            credentials_path=os.path.realpath(os.path.expanduser(_require_non_empty_string(item.get("credentials_path"), f"email.backends.gmail_oauth.{ref}.credentials_path"))),
+            token_path=os.path.realpath(os.path.expanduser(_require_non_empty_string(item.get("token_path"), f"email.backends.gmail_oauth.{ref}.token_path"))),
+            timeout_sec=_require_positive_int(item.get("timeout_sec", 60), f"email.backends.gmail_oauth.{ref}.timeout_sec"),
+            scopes=tuple(_require_non_empty_string(scope, f"email.backends.gmail_oauth.{ref}.scopes[]") for scope in raw_scopes),
+        )
+    for mailbox in mailboxes:
+        if mailbox.backend == "gmail_oauth" and mailbox.backend_ref not in gmail_oauth:
+            raise ValueError(f"unknown gmail_oauth backend_ref for {mailbox.address}: {mailbox.backend_ref}")
     return EmailConfig(
         mailboxes=tuple(mailboxes),
         himalaya=HimalayaBackendConfig(
@@ -216,4 +251,5 @@ def _load_email(raw: Any) -> EmailConfig:
             timeout_sec=_require_positive_int(himalaya.get("timeout_sec", 60), "email.backends.himalaya.timeout_sec"),
         ),
         imap_smtp=imap_smtp,
+        gmail_oauth=gmail_oauth,
     )

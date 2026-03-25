@@ -9,9 +9,19 @@ Email backends currently supported:
 
 1. `himalaya`
 2. `imap_smtp`
+3. `gmail_oauth`
 
 `imap_smtp` is useful for providers like NetEase `163.com` that require an
 IMAP `ID` payload before opening folders.
+
+`gmail_oauth` is the preferred Gmail path. It uses Google's OAuth flow and
+Gmail API instead of mailbox passwords or app passwords.
+
+One-time Gmail bootstrap:
+
+```bash
+hydrai-toolbox gmail-auth --config ~/Public/hydrai/Toolbox.json --backend-ref my_gmail
+```
 
 Startup:
 

@@ -132,3 +132,50 @@ class ToolboxConfigTests(unittest.TestCase):
             cfg = load_config(str(path))
             self.assertEqual(cfg.email.mailboxes[0].backend, "imap_smtp")
             self.assertEqual(cfg.email.imap_smtp["athena163"].imap_host, "imap.163.com")
+
+    def test_load_config_accepts_gmail_oauth_backend(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Toolbox.json"
+            credentials = Path(tmp) / "google-client.json"
+            token = Path(tmp) / "gmail-token.json"
+            credentials.write_text("{}", encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "control_port": 60000,
+                        "web_search": {
+                            "provider": "brave",
+                            "brave": {"key_env": "BRAVE_API_KEY", "timeout_sec": 15},
+                        },
+                        "email": {
+                            "mailboxes": [
+                                {
+                                    "address": "hydrai@gmail.com",
+                                    "backend": "gmail_oauth",
+                                    "backend_ref": "hydrai_gmail",
+                                    "grants": [{"sandbox_id": "olympus", "identity_id": "athena", "mode": "rw"}],
+                                }
+                            ],
+                            "backends": {
+                                "himalaya": {"bin_name": "himalaya", "timeout_sec": 60},
+                                "gmail_oauth": {
+                                    "hydrai_gmail": {
+                                        "email": "hydrai@gmail.com",
+                                        "credentials_path": str(credentials),
+                                        "token_path": str(token),
+                                        "timeout_sec": 60,
+                                        "scopes": [
+                                            "https://www.googleapis.com/auth/gmail.readonly",
+                                            "https://www.googleapis.com/auth/gmail.send"
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cfg = load_config(str(path))
+            self.assertEqual(cfg.email.mailboxes[0].backend, "gmail_oauth")
+            self.assertEqual(cfg.email.gmail_oauth["hydrai_gmail"].email, "hydrai@gmail.com")

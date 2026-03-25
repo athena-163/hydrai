@@ -185,14 +185,16 @@ Initial v1 backend types:
 
 Future backend types may include:
 
-1. `gmail_oauth`
-2. `m365_graph`
+1. `m365_graph`
 
 Caller APIs must not change when backend type changes.
 
 `imap_smtp` should support direct IMAP and SMTP settings plus optional IMAP
 `ID` fields for providers such as NetEase `163.com` that require RFC2971-style
 client identification before `SELECT`.
+
+`gmail_oauth` should support Gmail-specific OAuth 2.0 and use the Gmail API
+for search, read, send, and draft operations.
 
 ## 6. Control Port Endpoints
 

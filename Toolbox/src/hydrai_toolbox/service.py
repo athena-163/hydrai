@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from hydrai_toolbox.auth import InternalAuthGate
 from hydrai_toolbox.config import MailboxConfig, ServiceConfig
-from hydrai_toolbox.providers import BraveWebSearchProvider, HimalayaEmailProvider, ImapSmtpEmailProvider
+from hydrai_toolbox.providers import BraveWebSearchProvider, GmailOAuthEmailProvider, HimalayaEmailProvider, ImapSmtpEmailProvider
 
 LOG = logging.getLogger("hydrai_toolbox.service")
 _PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -217,7 +217,7 @@ class ToolboxService:
                 return
         raise PermissionError("mailbox access denied")
 
-    def _email_provider(self, mailbox: MailboxConfig) -> HimalayaEmailProvider | ImapSmtpEmailProvider:
+    def _email_provider(self, mailbox: MailboxConfig) -> HimalayaEmailProvider | ImapSmtpEmailProvider | GmailOAuthEmailProvider:
         if mailbox.backend == "himalaya":
             return HimalayaEmailProvider(
                 bin_name=self._config.email.himalaya.bin_name,
@@ -241,6 +241,15 @@ class ToolboxService:
                 drafts_folder=backend.drafts_folder,
                 trash_folder=backend.trash_folder,
                 imap_id=backend.imap_id,
+            )
+        if mailbox.backend == "gmail_oauth":
+            backend = self._config.email.gmail_oauth[mailbox.backend_ref]
+            return GmailOAuthEmailProvider(
+                email=backend.email,
+                credentials_path=backend.credentials_path,
+                token_path=backend.token_path,
+                scopes=backend.scopes,
+                timeout=backend.timeout_sec,
             )
         raise ValueError(f"unsupported email backend: {mailbox.backend}")
 

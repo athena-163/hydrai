@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import imaplib
 import os
 import shlex
@@ -403,3 +404,114 @@ class ImapSmtpEmailProvider:
         with open(draft_path, "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines))
         return {"ok": True, "draft_id": draft_id, "path": draft_path}
+
+
+@dataclass
+class GmailOAuthEmailProvider:
+    email: str
+    credentials_path: str
+    token_path: str
+    scopes: tuple[str, ...]
+    timeout: int = 60
+
+    def _deps(self):
+        try:
+            from google.auth.transport.requests import Request
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+        except ImportError as exc:
+            raise RuntimeError("gmail_oauth dependencies are not installed") from exc
+        return Request, Credentials, build
+
+    def _credentials(self):
+        Request, Credentials, _ = self._deps()
+        if not os.path.isfile(self.token_path):
+            raise RuntimeError(f"gmail_oauth token file not found: {self.token_path}")
+        creds = Credentials.from_authorized_user_file(self.token_path, list(self.scopes))
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(self.token_path, "w", encoding="utf-8") as handle:
+                handle.write(creds.to_json())
+        if not creds.valid:
+            raise RuntimeError("gmail_oauth credentials are invalid; run gmail-auth first")
+        return creds
+
+    def _service(self):
+        _, _, build = self._deps()
+        return build("gmail", "v1", credentials=self._credentials(), cache_discovery=False)
+
+    def search(self, query: str, limit: int = 10, account: str = "", folder: str = "") -> dict:
+        _ = account
+        service = self._service()
+        labels = [folder] if folder else None
+        resp = service.users().messages().list(userId="me", q=str(query or ""), maxResults=max(1, int(limit)), labelIds=labels).execute()
+        messages = []
+        for item in resp.get("messages", []) or []:
+            detail = service.users().messages().get(
+                userId="me",
+                id=item["id"],
+                format="metadata",
+                metadataHeaders=["Subject", "From", "To", "Date"],
+            ).execute()
+            headers = {h.get("name", ""): h.get("value", "") for h in detail.get("payload", {}).get("headers", [])}
+            messages.append(
+                {
+                    "id": item["id"],
+                    "subject": headers.get("Subject", ""),
+                    "from": headers.get("From", ""),
+                    "to": headers.get("To", ""),
+                    "date": headers.get("Date", ""),
+                    "folder": folder or "INBOX",
+                }
+            )
+        return {"messages": messages}
+
+    def read(self, message_id: str, account: str = "", folder: str = "") -> dict:
+        _ = account, folder
+        service = self._service()
+        detail = service.users().messages().get(userId="me", id=str(message_id), format="raw").execute()
+        raw = detail.get("raw", "")
+        body = base64.urlsafe_b64decode(raw.encode("utf-8")).decode("utf-8", "replace") if raw else ""
+        return {"id": str(message_id), "body": body}
+
+    def _encode_message(self, to: list[str], subject: str, body: str, cc: list[str] | None = None, bcc: list[str] | None = None) -> str:
+        msg = EmailMessage()
+        msg["From"] = self.email
+        msg["To"] = ", ".join(to)
+        msg["Subject"] = subject
+        if cc:
+            msg["Cc"] = ", ".join(cc)
+        if bcc:
+            msg["Bcc"] = ", ".join(bcc)
+        msg.set_content(body)
+        return base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+
+    def send(
+        self,
+        to: list[str],
+        subject: str,
+        body: str,
+        account: str = "",
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+    ) -> dict:
+        _ = account
+        service = self._service()
+        raw = self._encode_message(to, subject, body, cc=cc, bcc=bcc)
+        result = service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        return {"ok": True, "id": result.get("id", "")}
+
+    def draft(
+        self,
+        to: list[str],
+        subject: str,
+        body: str,
+        account: str = "",
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+    ) -> dict:
+        _ = account
+        service = self._service()
+        raw = self._encode_message(to, subject, body, cc=cc, bcc=bcc)
+        result = service.users().drafts().create(userId="me", body={"message": {"raw": raw}}).execute()
+        return {"ok": True, "draft_id": result.get("id", "")}

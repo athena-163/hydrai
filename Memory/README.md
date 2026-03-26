@@ -29,10 +29,13 @@ Sandbox port:
 
 1. `GET /health`
 2. `GET /help`
-3. `POST /tree/...`
-4. `POST /identity/...`
-5. `POST /session/...`
-6. `POST /skills/...`
+3. `POST /brain/bootstrap`
+4. `POST /tree/...`
+5. `POST /identity/...`
+6. `POST /session/...`
+7. `POST /skills/...`
+
+`POST /brain/bootstrap` is the normal root-entry API for `Brain`.
 
 Security:
 

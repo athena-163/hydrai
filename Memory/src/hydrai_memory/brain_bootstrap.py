@@ -67,6 +67,8 @@ class BrainBootstrapAPI:
         session_ids = [str(item.get("id") or "") for item in list(profile.get("sessions", []) or []) if str(item.get("id") or "")]
 
         requestor_persona = self.identity_store.get_identity_like_persona(requestor_id)
+        if not requestor_persona:
+            raise FileNotFoundError(f"unknown requestor identity: {requestor_id}")
         shortlist = self._skill_shortlist(identity_id)
 
         session: dict[str, Any] | None = None

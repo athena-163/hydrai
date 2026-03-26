@@ -424,6 +424,18 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     )
                     self.assertIsNone(bootstrap_without_session["session"])
 
+                    with self.assertRaises(urllib.error.HTTPError) as bad_requestor:
+                        _request_json(
+                            "POST",
+                            sandbox_base + "/brain/bootstrap",
+                            {
+                                "actor_identity_id": "athena",
+                                "requestor_id": "missing-persona",
+                            },
+                        )
+                    self.assertEqual(bad_requestor.exception.code, 404)
+                    bad_requestor.exception.close()
+
                     watchdog = _request_json(
                         "POST",
                         control_base + "/sandboxes/alpha/resources/watchdog/start",

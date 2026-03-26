@@ -43,6 +43,13 @@ These APIs expose structured file access over managed trees. They are the
 generic substrate behind resources, identities, sessions, humans, and native
 participants.
 
+On the sandbox port:
+
+- reads may target `resource`, `identity`, `session`, `human`, and `native`
+- writes are only intended for `resource`
+- direct mutation of identity-like trees and session trees is reserved for the
+  control port in system space
+
 ### `POST /tree/view`
 
 Purpose:

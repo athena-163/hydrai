@@ -94,6 +94,10 @@ Generic tree APIs operate on:
 4. `human`
 5. `native`
 
+On the sandbox port, direct writes are only intended for `resource`.
+Identity-like and session-tree mutation is reserved for the control port in
+system space.
+
 Skill shortlist entries in bootstrap contain the rendered `SKILL.md` text for
 each shortlisted skill.
 

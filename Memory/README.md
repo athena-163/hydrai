@@ -54,3 +54,6 @@ The detailed architecture and API contract live in:
 1. [`OVERVIEW.md`](/Users/zeus/Codebase/hydrai/Memory/OVERVIEW.md)
 2. [`SPEC.md`](/Users/zeus/Codebase/hydrai/Memory/SPEC.md)
 3. [`MANUAL.md`](/Users/zeus/Codebase/hydrai/Memory/MANUAL.md)
+
+The installed package also ships a bundled runtime manual, so `/help` does not
+depend on the source checkout being present.

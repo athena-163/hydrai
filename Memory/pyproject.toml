@@ -24,4 +24,4 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-hydrai_memory = ["skillset/skills/**/*.md"]
+hydrai_memory = ["MANUAL.md", "skillset/skills/**/*.md"]

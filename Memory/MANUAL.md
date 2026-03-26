@@ -192,29 +192,97 @@ Response:
 }
 ```
 
-## 2. Identity APIs
+## 2. Brain Bootstrap
 
-These are compact identity-specific tools built on top of `IdentityState`.
-
-### `POST /identity/profile`
+### `POST /brain/bootstrap`
 
 Purpose:
-- fetch the main self package for one normal identity
+- assemble the deterministic root bootstrap package for one Brain request
 
-Returns:
-- `persona`
-- `soul`
-- `self_dynamic`
-- `friends`: list of `{id, summary}`
-- `sessions`: list of `{id, summary}`
+Notes:
+- this replaces `identity/profile` as the normal root-entry API
+- `session_id` may be omitted for monologue or evolve-style requests
+- search is only run when `query` is non-empty
 
 Request:
 
 ```json
 {
-  "identity_id": "athena"
+  "identity_id": "athena",
+  "requestor_id": "zeus",
+  "session_id": "chat-1",
+  "query": "summarize the latest design status",
+  "top_k": 10,
+  "min_score": 0.3,
+  "attachment_limit": 5
 }
 ```
+
+Response:
+
+```json
+{
+  "target_identity_id": "athena",
+  "requestor_id": "zeus",
+  "requestor_persona": "Project owner",
+  "target_profile": {
+    "persona": "Strategist",
+    "soul": "Core self",
+    "self_dynamic": "",
+    "friends": [],
+    "sessions": [
+      {
+        "id": "chat-1",
+        "summary": ""
+      }
+    ]
+  },
+  "friend_ids": [],
+  "session_ids": ["chat-1"],
+  "session": {
+    "id": "chat-1",
+    "context": "",
+    "summary": "",
+    "participants": {
+      "athena": "rw",
+      "zeus": "ro"
+    },
+    "resources": {
+      "workspace-main": "rw"
+    },
+    "mounted_resources": [
+      {
+        "id": "workspace-main",
+        "type": "context_tree",
+        "summary": ""
+      }
+    ],
+    "latest_attachments": [
+      {
+        "tag": "0001.jpg",
+        "path": "attachments/0001.jpg",
+        "summary": "diagram image"
+      }
+    ],
+    "search": {
+      "results": []
+    }
+  },
+  "skill_shortlist": [
+    {
+      "name": "context",
+      "category": "shortlist",
+      "path": "shortlist/context/SKILL.md",
+      "summary": "Resource reading and search skill",
+      "prompt_text": "# Context ..."
+    }
+  ]
+}
+```
+
+## 3. Identity APIs
+
+These are compact identity-specific tools built on top of `IdentityState`.
 
 ### `POST /identity/relations`
 
@@ -315,7 +383,7 @@ Response:
 }
 ```
 
-## 3. Session APIs
+## 4. Session APIs
 
 These are compact session tools built on top of `SessionBook`.
 
@@ -435,7 +503,7 @@ Response:
 ]
 ```
 
-## 4. Skill APIs
+## 5. Skill APIs
 
 These are discovery/install tools over sandbox-visible skills.
 

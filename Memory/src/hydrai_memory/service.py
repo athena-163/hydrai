@@ -7,9 +7,11 @@ import logging
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
 from typing import Any, Callable
 
 from hydrai_memory.auth import InternalAuthGate
+from hydrai_memory.brain_bootstrap import BrainBootstrapAPI
 from hydrai_memory.config import SandboxConfig, ServiceConfig
 from hydrai_memory.identity_state import IdentityBrainAPI, IdentityStore
 from hydrai_memory.resources import MemorySandboxAPI, ResourceRegistry
@@ -17,7 +19,6 @@ from hydrai_memory.sessionbook import SessionBrainAPI, SessionStore
 from hydrai_memory.skillset import SkillManager
 
 LOG = logging.getLogger("hydrai_memory.service")
-_PACKAGE_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 
 class HttpError(Exception):
@@ -35,9 +36,12 @@ def _manual_path() -> str:
     env_path = os.environ.get("HYDRAI_MEMORY_MANUAL_PATH", "").strip()
     if env_path:
         return os.path.realpath(os.path.expanduser(env_path))
-    candidate = os.path.join(_PACKAGE_ROOT, "MANUAL.md")
-    if os.path.isfile(candidate):
-        return candidate
+    try:
+        candidate = resources.files("hydrai_memory").joinpath("MANUAL.md")
+        if candidate.is_file():
+            return str(candidate)
+    except Exception:
+        pass
     return ""
 
 
@@ -66,6 +70,13 @@ class SandboxRuntime:
             config_path=self.service_config.config_path,
         )
         self.skill_manager.initialize_defaults()
+        self.brain_bootstrap = BrainBootstrapAPI(
+            self.identity_store,
+            self.identity_brain,
+            self.session_brain,
+            self.resource_registry,
+            self.skill_manager,
+        )
         self.tree_api_control = MemorySandboxAPI(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
@@ -111,7 +122,7 @@ class SandboxRuntime:
                 "tree_write": "POST /tree/write",
                 "tree_append": "POST /tree/append",
                 "tree_delete": "POST /tree/delete",
-                "identity_profile": "POST /identity/profile",
+                "brain_bootstrap": "POST /brain/bootstrap",
                 "identity_relations": "POST /identity/relations",
                 "identity_sessions": "POST /identity/sessions",
                 "identity_memorables_search": "POST /identity/memorables-search",
@@ -301,8 +312,6 @@ class MemoryService:
 
     def _dispatch_identity_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         api = sandbox.identity_brain
-        if action == "profile":
-            return api.identity_profile(str(body.get("identity_id") or ""))
         if action == "relations":
             return api.identity_relations(str(body.get("identity_id") or ""), list(body.get("friend_ids") or []))
         if action == "sessions":
@@ -367,6 +376,19 @@ class MemoryService:
                     str(body.get("skill_name") or ""),
                     force=bool(body.get("force", False)),
                 )
+            )
+        raise HttpError(404, "not found")
+
+    def _dispatch_brain_api(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
+        if action == "bootstrap":
+            return sandbox.brain_bootstrap.bootstrap(
+                str(body.get("identity_id") or ""),
+                requestor_id=str(body.get("requestor_id") or ""),
+                session_id=str(body.get("session_id") or ""),
+                query=str(body.get("query") or ""),
+                top_k=int(body.get("top_k", 10)),
+                min_score=float(body.get("min_score", 0.3)),
+                attachment_limit=int(body.get("attachment_limit", 5)),
             )
         raise HttpError(404, "not found")
 
@@ -609,6 +631,8 @@ class MemoryService:
             return self._dispatch_identity_brain(sandbox, parts[1], body)
         if len(parts) == 2 and parts[0] == "session":
             return self._dispatch_session_brain(sandbox, parts[1], body)
+        if len(parts) == 2 and parts[0] == "brain":
+            return self._dispatch_brain_api(sandbox, parts[1], body)
         if len(parts) == 2 and parts[0] == "skills":
             return self._dispatch_skill_brain(sandbox, parts[1], body)
         raise HttpError(404, "not found")

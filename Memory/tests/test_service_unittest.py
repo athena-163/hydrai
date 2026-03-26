@@ -113,11 +113,13 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     self.assertEqual(help_payload["sandboxes"][0]["id"], "alpha")
                     self.assertIn("watchdog", help_payload["sandboxes"][0])
                     self.assertEqual(help_payload["sandboxes"][0]["context_defaults_source"], expected_config_path)
-                    self.assertTrue(str(help_payload["manual_path"]).endswith("/Memory/MANUAL.md"))
+                    self.assertTrue(str(help_payload["manual_path"]).endswith("/hydrai_memory/MANUAL.md"))
 
                     sandbox_help = _request_json("GET", sandbox_base + "/help")
                     self.assertEqual(sandbox_help["context_defaults_source"], expected_config_path)
-                    self.assertTrue(str(sandbox_help["manual_path"]).endswith("/Memory/MANUAL.md"))
+                    self.assertTrue(str(sandbox_help["manual_path"]).endswith("/hydrai_memory/MANUAL.md"))
+                    self.assertIn("brain_bootstrap", sandbox_help["endpoints"])
+                    self.assertNotIn("identity_profile", sandbox_help["endpoints"])
 
                     registered = _request_json(
                         "POST",
@@ -141,6 +143,18 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     )
                     self.assertEqual(identity["id"], "athena")
 
+                    related_identity = _request_json(
+                        "POST",
+                        control_base + "/sandboxes/alpha/identities/create",
+                        {
+                            "identity_id": "artemis",
+                            "persona": "Scout",
+                            "soul": "Field self",
+                            "config": {},
+                        },
+                    )
+                    self.assertEqual(related_identity["id"], "artemis")
+
                     human = _request_json(
                         "POST",
                         control_base + "/sandboxes/alpha/humans/create",
@@ -161,6 +175,45 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         },
                     )
                     self.assertEqual(session["id"], "chat-1")
+
+                    wrote_identity_self = _request_json(
+                        "POST",
+                        sandbox_base + "/tree/write",
+                        {
+                            "target_type": "identity",
+                            "target_id": "athena",
+                            "path": "dynamics/self.md",
+                            "content": "Keep the system coherent.",
+                            "summary": "self guidance",
+                        },
+                    )
+                    self.assertTrue(wrote_identity_self["ok"])
+
+                    wrote_identity_friend = _request_json(
+                        "POST",
+                        sandbox_base + "/tree/write",
+                        {
+                            "target_type": "identity",
+                            "target_id": "athena",
+                            "path": "dynamics/artemis.md",
+                            "content": "Trusted scout ally.",
+                            "summary": "friend note",
+                        },
+                    )
+                    self.assertTrue(wrote_identity_friend["ok"])
+
+                    wrote_identity_ongoing = _request_json(
+                        "POST",
+                        sandbox_base + "/tree/write",
+                        {
+                            "target_type": "identity",
+                            "target_id": "athena",
+                            "path": "ongoing/chat-1.md",
+                            "content": "Continue the design thread.",
+                            "summary": "chat continuity",
+                        },
+                    )
+                    self.assertTrue(wrote_identity_ongoing["ok"])
 
                     wrote = _request_json(
                         "POST",
@@ -186,13 +239,31 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     )
                     self.assertEqual(read_back["notes.md"], "hello memory")
 
-                    profile = _request_json(
+                    bootstrap = _request_json(
                         "POST",
-                        sandbox_base + "/identity/profile",
-                        {"identity_id": "athena"},
+                        sandbox_base + "/brain/bootstrap",
+                        {
+                            "identity_id": "athena",
+                            "requestor_id": "zeus",
+                            "session_id": "chat-1",
+                            "query": "workspace design",
+                            "attachment_limit": 3,
+                        },
                     )
-                    self.assertEqual(profile["persona"], "Strategist")
-                    self.assertEqual(profile["soul"], "Core self")
+                    self.assertEqual(bootstrap["target_identity_id"], "athena")
+                    self.assertEqual(bootstrap["requestor_persona"], "Project owner")
+                    self.assertEqual(bootstrap["target_profile"]["persona"], "Strategist")
+                    self.assertEqual(bootstrap["target_profile"]["soul"], "Core self")
+                    self.assertEqual(bootstrap["target_profile"]["self_dynamic"], "Keep the system coherent.")
+                    self.assertIn("artemis", bootstrap["friend_ids"])
+                    self.assertIn("chat-1", bootstrap["session_ids"])
+                    self.assertEqual(bootstrap["session"]["id"], "chat-1")
+                    self.assertEqual(bootstrap["session"]["participants"]["athena"], "rw")
+                    self.assertEqual(bootstrap["session"]["resources"]["workspace-main"], "rw")
+                    self.assertEqual(bootstrap["session"]["mounted_resources"][0]["id"], "workspace-main")
+                    self.assertEqual(bootstrap["session"]["latest_attachments"], [])
+                    self.assertIn("results", bootstrap["session"]["search"])
+                    self.assertTrue(any(item["name"] == "context" and item["prompt_text"] for item in bootstrap["skill_shortlist"]))
 
                     skill_sites = _request_json("POST", sandbox_base + "/skills/trusted-sites", {})
                     self.assertEqual(skill_sites["results"][0]["id"], "trusted")
@@ -246,6 +317,18 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     )
                     self.assertEqual(latest[0]["tag"], "0001.jpg")
 
+                    bootstrap_after_attachment = _request_json(
+                        "POST",
+                        sandbox_base + "/brain/bootstrap",
+                        {
+                            "identity_id": "athena",
+                            "requestor_id": "zeus",
+                            "session_id": "chat-1",
+                            "attachment_limit": 3,
+                        },
+                    )
+                    self.assertEqual(bootstrap_after_attachment["session"]["latest_attachments"][0]["tag"], "0001.jpg")
+
                     recent = _request_json(
                         "POST",
                         sandbox_base + "/session/recent",
@@ -264,6 +347,16 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         },
                     )
                     self.assertIn("results", search)
+
+                    bootstrap_without_session = _request_json(
+                        "POST",
+                        sandbox_base + "/brain/bootstrap",
+                        {
+                            "identity_id": "athena",
+                            "requestor_id": "zeus",
+                        },
+                    )
+                    self.assertIsNone(bootstrap_without_session["session"])
 
                     watchdog = _request_json(
                         "POST",

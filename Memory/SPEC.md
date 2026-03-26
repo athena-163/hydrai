@@ -1431,36 +1431,17 @@ The `Brain`-facing surface should stay compact and semantic.
 
 The initial normal-identity APIs should be:
 
-1. `identity_profile(identity_id)`
-2. `identity_relations(identity_id, friend_ids)`
-3. `identity_sessions(identity_id, session_ids)`
-4. `identity_memorables_search(identity_id, query, top_content_n, top_summary_k, min_score=0.3)`
+1. `identity_relations(identity_id, friend_ids)`
+2. `identity_sessions(identity_id, session_ids)`
+3. `identity_memorables_search(identity_id, query, top_content_n, top_summary_k, min_score=0.3)`
 
 These should be library/service operations inside `Memory`, not generic raw tree
 reads.
 
-### 19.6 `identity_profile`
+The target identity self package should instead be returned from the
+deterministic bootstrap endpoint in section 22.
 
-Input:
-
-1. `identity_id`
-
-Returns:
-
-1. `persona`
-2. `soul`
-3. `self_dynamic`
-4. `friends`: list of `{id, summary}`
-5. `sessions`: list of `{id, summary}`
-
-Meaning:
-
-1. `self_dynamic` is `dynamics/self.md`
-2. friend summaries come from `.SUMMARY.json` entries for `dynamics/<friend>.md`
-3. session summaries come from `.SUMMARY.json` entries for `ongoing/<session>.md`
-4. if a friend or session summary is missing, the item should still be returned with empty `summary`
-
-### 19.7 `identity_relations`
+### 19.6 `identity_relations`
 
 Input:
 
@@ -1480,7 +1461,7 @@ Meaning:
 4. `dynamic_map` is read from the target identity's `dynamics/<friend>.md`
 5. unknown or unavailable `friend_ids` should be ignored rather than failing the whole call
 
-### 19.8 `identity_sessions`
+### 19.7 `identity_sessions`
 
 Input:
 
@@ -1496,7 +1477,7 @@ Meaning:
 1. values come from `ongoing/<session_id>.md`
 2. unknown or unavailable `session_ids` should be ignored rather than failing the whole call
 
-### 19.9 `identity_memorables_search`
+### 19.8 `identity_memorables_search`
 
 Input:
 
@@ -1615,10 +1596,9 @@ For v1, `Memory` should provide:
 
 The compact semantic APIs such as:
 
-1. `identity_profile`
-2. `identity_relations`
-3. `identity_sessions`
-4. `identity_memorables_search`
+1. `identity_relations`
+2. `identity_sessions`
+3. `identity_memorables_search`
 
 remain normal-identity APIs.
 
@@ -1922,10 +1902,13 @@ Generic tree APIs over registered resources, identities, humans, native, and ses
 
 Identity Brain APIs:
 
-1. `POST /identity/profile`
-2. `POST /identity/relations`
-3. `POST /identity/sessions`
-4. `POST /identity/memorables-search`
+1. `POST /identity/relations`
+2. `POST /identity/sessions`
+3. `POST /identity/memorables-search`
+
+Bootstrap API:
+
+1. `POST /brain/bootstrap`
 
 Session Brain APIs:
 
@@ -1941,14 +1924,65 @@ Skill Brain APIs:
 4. `POST /skills/trusted-sites`
 5. `POST /skills/install`
 
-### 22.3 Auth Mode
+### 22.3 Bootstrap API
+
+`Memory` should expose one deterministic bootstrap assembly endpoint for root
+`Brain` requests:
+
+1. `POST /brain/bootstrap`
+
+Request:
+
+1. `identity_id`
+2. `requestor_id`
+3. optional `session_id`
+4. optional `query`
+5. optional `top_k`
+6. optional `min_score`
+7. optional `attachment_limit`
+
+Returns:
+
+1. `target_identity_id`
+2. `requestor_id`
+3. `requestor_persona`
+4. `target_profile`
+5. `friend_ids`
+6. `session_ids`
+7. optional `session`
+8. `skill_shortlist`
+
+Where:
+
+1. `target_profile` includes:
+   1. `persona`
+   2. `soul`
+   3. `self_dynamic`
+   4. friend summary list
+   5. ongoing session summary list
+2. `session`, when present, includes:
+   1. `id`
+   2. `context`
+   3. `summary`
+   4. `participants`
+   5. `resources`
+   6. `mounted_resources` with top-level resource summaries
+   7. `latest_attachments`
+   8. query-driven `search` hits
+3. `skill_shortlist` contains the full rendered `SKILL.md` text for each
+   shortlisted skill, not just ids
+
+This endpoint should remain deterministic only. It may perform search and
+retrieval through `Memory`, but it must not perform any hidden reasoning.
+
+### 22.4 Auth Mode
 
 Like the rest of Hydrai:
 
 1. `dev` mode bypasses internal auth intentionally
 2. `secure` mode requires valid Hydrai internal tokens on both control and sandbox ports
 
-### 22.4 Concurrency Rule
+### 22.5 Concurrency Rule
 
 The service layer should preserve the already stated practical rule:
 

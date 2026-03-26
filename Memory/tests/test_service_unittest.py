@@ -85,7 +85,11 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             {
                                 "id": "alpha",
                                 "port": 0,
-                                "sandbox_space_root": sandbox_home
+                                "sandbox_space_root": sandbox_home,
+                                "skills": {
+                                    "whitelist": ["context", "install_skill", "demo-skill"],
+                                    "blacklist": []
+                                }
                             }
                         ],
                     },
@@ -155,6 +159,18 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     )
                     self.assertEqual(related_identity["id"], "artemis")
 
+                    blocked_identity = _request_json(
+                        "POST",
+                        control_base + "/sandboxes/alpha/identities/create",
+                        {
+                            "identity_id": "hermes",
+                            "persona": "Courier",
+                            "soul": "Fast self",
+                            "config": {"skills": {"blacklist": ["install_skill"]}},
+                        },
+                    )
+                    self.assertEqual(blocked_identity["id"], "hermes")
+
                     human = _request_json(
                         "POST",
                         control_base + "/sandboxes/alpha/humans/create",
@@ -185,6 +201,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             "path": "dynamics/self.md",
                             "content": "Keep the system coherent.",
                             "summary": "self guidance",
+                            "actor_identity_id": "athena",
                         },
                     )
                     self.assertTrue(wrote_identity_self["ok"])
@@ -198,6 +215,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             "path": "dynamics/artemis.md",
                             "content": "Trusted scout ally.",
                             "summary": "friend note",
+                            "actor_identity_id": "athena",
                         },
                     )
                     self.assertTrue(wrote_identity_friend["ok"])
@@ -211,6 +229,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             "path": "ongoing/chat-1.md",
                             "content": "Continue the design thread.",
                             "summary": "chat continuity",
+                            "actor_identity_id": "athena",
                         },
                     )
                     self.assertTrue(wrote_identity_ongoing["ok"])
@@ -224,9 +243,27 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             "path": "notes.md",
                             "content": "hello memory",
                             "summary": "workspace note",
+                            "actor_identity_id": "athena",
+                            "session_id": "chat-1",
                         },
                     )
                     self.assertTrue(wrote["ok"])
+
+                    with self.assertRaises(urllib.error.HTTPError) as denied_write:
+                        _request_json(
+                            "POST",
+                            sandbox_base + "/tree/write",
+                            {
+                                "target_type": "resource",
+                                "target_id": "workspace-main",
+                                "path": "blocked.md",
+                                "content": "should fail",
+                                "actor_identity_id": "zeus",
+                                "session_id": "chat-1",
+                            },
+                        )
+                    self.assertEqual(denied_write.exception.code, 403)
+                    denied_write.exception.close()
 
                     read_back = _request_json(
                         "POST",
@@ -235,6 +272,8 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             "target_type": "resource",
                             "target_id": "workspace-main",
                             "paths": ["notes.md"],
+                            "actor_identity_id": "athena",
+                            "session_id": "chat-1",
                         },
                     )
                     self.assertEqual(read_back["notes.md"], "hello memory")
@@ -265,13 +304,26 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     self.assertIn("results", bootstrap["session"]["search"])
                     self.assertTrue(any(item["name"] == "context" and item["prompt_text"] for item in bootstrap["skill_shortlist"]))
 
-                    skill_sites = _request_json("POST", sandbox_base + "/skills/trusted-sites", {})
+                    skill_sites = _request_json(
+                        "POST",
+                        sandbox_base + "/skills/trusted-sites",
+                        {"actor_identity_id": "athena"},
+                    )
                     self.assertEqual(skill_sites["results"][0]["id"], "trusted")
+
+                    with self.assertRaises(urllib.error.HTTPError) as denied_sites:
+                        _request_json(
+                            "POST",
+                            sandbox_base + "/skills/trusted-sites",
+                            {"actor_identity_id": "hermes"},
+                        )
+                    self.assertEqual(denied_sites.exception.code, 403)
+                    denied_sites.exception.close()
 
                     skill_listing = _request_json(
                         "POST",
                         sandbox_base + "/skills/list",
-                        {"identity_id": "athena"},
+                        {"actor_identity_id": "athena"},
                     )
                     self.assertTrue(any(item["category"] == "shortlist" and item["name"] == "context" for item in skill_listing["results"]))
 
@@ -279,7 +331,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         "POST",
                         sandbox_base + "/skills/install",
                         {
-                            "identity_id": "athena",
+                            "actor_identity_id": "athena",
                             "hub_id": "trusted",
                             "skill_name": "demo-skill",
                         },
@@ -290,7 +342,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         "POST",
                         sandbox_base + "/skills/read",
                         {
-                            "identity_id": "athena",
+                            "actor_identity_id": "athena",
                             "name": "demo-skill",
                             "category": "user",
                         },
@@ -313,7 +365,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     latest = _request_json(
                         "POST",
                         sandbox_base + "/session/latest-attachments",
-                        {"session_id": "chat-1", "limit": 5},
+                        {"actor_identity_id": "athena", "session_id": "chat-1", "limit": 5},
                     )
                     self.assertEqual(latest[0]["tag"], "0001.jpg")
 
@@ -332,7 +384,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                     recent = _request_json(
                         "POST",
                         sandbox_base + "/session/recent",
-                        {"session_id": "chat-1"},
+                        {"actor_identity_id": "athena", "session_id": "chat-1"},
                     )
                     self.assertEqual(recent["identities"]["athena"], "rw")
                     self.assertEqual(recent["resources"]["workspace-main"], "rw")
@@ -344,9 +396,19 @@ class MemoryServiceHttpTests(unittest.TestCase):
                             "target_type": "resource",
                             "target_id": "workspace-main",
                             "query_text": "workspace",
+                            "actor_identity_id": "athena",
+                            "session_id": "chat-1",
                         },
                     )
                     self.assertIn("results", search)
+
+                    accessible_resources = _request_json(
+                        "POST",
+                        sandbox_base + "/resources/list",
+                        {"actor_identity_id": "athena", "session_id": "chat-1"},
+                    )
+                    self.assertEqual(accessible_resources["results"][0]["id"], "workspace-main")
+                    self.assertEqual(accessible_resources["results"][0]["mode"], "rw")
 
                     bootstrap_without_session = _request_json(
                         "POST",

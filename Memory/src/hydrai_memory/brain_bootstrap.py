@@ -79,6 +79,7 @@ class BrainBootstrapAPI:
                 mounted_resources.append(
                     {
                         "id": resource_id,
+                        "mode": str(dict(recent.get("resources") or {}).get(resource_id) or ""),
                         "summary": str(item.get("summary") or ""),
                         "type": str(item.get("type") or ""),
                     }

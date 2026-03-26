@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hydrai_memory.identity_state import IdentityStore
+from hydrai_memory.policy import SandboxPolicy
 from hydrai_memory.skillset.core import SkillSet
 
 
@@ -43,6 +44,8 @@ class SkillManager:
         *,
         trusted_hubs: tuple[TrustedSkillHub, ...] = (),
         config_path: str | None = None,
+        sandbox_skill_whitelist: tuple[str, ...] = (),
+        sandbox_skill_blacklist: tuple[str, ...] = (),
     ):
         self.storage_root = os.path.realpath(storage_root)
         self.sandbox_id = _validate_token(sandbox_id, "sandbox_id")
@@ -53,6 +56,12 @@ class SkillManager:
         self.skillset = SkillSet(config_path=config_path)
         self.identity_store = IdentityStore(storage_root, sandbox_id, config_path=config_path)
         self.trusted_hubs = tuple(trusted_hubs)
+        self.policy = SandboxPolicy(
+            storage_root,
+            sandbox_id,
+            sandbox_skill_whitelist=sandbox_skill_whitelist,
+            sandbox_skill_blacklist=sandbox_skill_blacklist,
+        )
         os.makedirs(self.skills_root, exist_ok=True)
 
     def initialize_defaults(self) -> dict[str, Any]:
@@ -71,15 +80,8 @@ class SkillManager:
             for hub in self.trusted_hubs
         ]
 
-    def _skill_policy(self, identity_id: str) -> tuple[set[str], set[str]]:
-        identity = self.identity_store.get_identity(identity_id)
-        if identity is None:
-            raise FileNotFoundError(f"unknown identity: {identity_id}")
-        config = dict(identity.get("config") or {})
-        skills_cfg = dict(config.get("skills") or {}) if isinstance(config.get("skills"), dict) else {}
-        whitelist = {str(item) for item in list(skills_cfg.get("whitelist") or []) if str(item)}
-        blacklist = {str(item) for item in list(skills_cfg.get("blacklist") or []) if str(item)}
-        return whitelist, blacklist
+    def _effective_skill_policy(self, identity_id: str) -> tuple[set[str], set[str]]:
+        return self.policy.effective_skill_policy(self.identity_store, identity_id)
 
     def _is_visible(self, name: str, whitelist: set[str], blacklist: set[str]) -> bool:
         if whitelist and name not in whitelist:
@@ -96,7 +98,7 @@ class SkillManager:
         return [{**item, "category": category} for item in items]
 
     def skill_list(self, identity_id: str) -> dict[str, Any]:
-        whitelist, blacklist = self._skill_policy(identity_id)
+        whitelist, blacklist = self._effective_skill_policy(identity_id)
         results: list[dict[str, Any]] = []
         for category in ("shortlist", "builtin", "user"):
             for item in self._list_category(category):
@@ -105,7 +107,7 @@ class SkillManager:
         return {"results": results}
 
     def skill_search(self, identity_id: str, query: str, *, limit: int = 10, min_score: float = 0.3) -> dict[str, Any]:
-        whitelist, blacklist = self._skill_policy(identity_id)
+        whitelist, blacklist = self._effective_skill_policy(identity_id)
         hits: list[dict[str, Any]] = []
         for category in ("shortlist", "builtin", "user"):
             root = os.path.join(self.skills_root, category)
@@ -143,6 +145,9 @@ class SkillManager:
                     ]
                 }
         return {"results": []}
+
+    def capability_allowed(self, identity_id: str, capability_name: str) -> bool:
+        return self.policy.capability_allowed(self.identity_store, identity_id, capability_name)
 
     def _find_hub(self, hub_id: str) -> TrustedSkillHub:
         wanted = _validate_token(hub_id, "hub_id")
@@ -209,7 +214,8 @@ class SkillManager:
         *,
         force: bool = False,
     ) -> dict[str, Any]:
-        self._skill_policy(identity_id)
+        if not self.capability_allowed(identity_id, "install_skill"):
+            raise PermissionError("skill install is not allowed for this identity")
         hub = self._find_hub(hub_id)
         entry = self._resolve_hub_entry(hub, skill_name)
         with urllib.request.urlopen(entry["archive_url"], timeout=30) as response:

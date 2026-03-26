@@ -30,12 +30,22 @@ Sandbox port:
 1. `GET /health`
 2. `GET /help`
 3. `POST /brain/bootstrap`
-4. `POST /tree/...`
-5. `POST /identity/...`
-6. `POST /session/...`
-7. `POST /skills/...`
+4. `POST /resources/list`
+5. `POST /tree/...`
+6. `POST /identity/...`
+7. `POST /session/...`
+8. `POST /skills/...`
 
 `POST /brain/bootstrap` is the normal root-entry API for `Brain`.
+
+Sandbox-port Brain calls are actor-aware. `Memory` is the final gate for:
+
+1. session participant access
+2. mounted resource `ro` / `rw`
+3. self-only identity-tree access
+4. sandbox plus identity skill filtering
+
+Control-port tree and management APIs remain the system-space bypass surface.
 
 Security:
 

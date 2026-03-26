@@ -203,6 +203,7 @@ Notes:
 - this replaces `identity/profile` as the normal root-entry API
 - `session_id` may be omitted for monologue or evolve-style requests
 - search is only run when `query` is non-empty
+- sandbox-port calls are permission-gated by `Memory`
 
 Request:
 
@@ -253,6 +254,7 @@ Response:
     "mounted_resources": [
       {
         "id": "workspace-main",
+        "mode": "rw",
         "type": "context_tree",
         "summary": ""
       }
@@ -284,6 +286,10 @@ Response:
 
 These are compact identity-specific tools built on top of `IdentityState`.
 
+All sandbox-port identity APIs require:
+- `actor_identity_id`
+- `identity_id` must match the acting identity
+
 ### `POST /identity/relations`
 
 Purpose:
@@ -297,6 +303,7 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
   "identity_id": "athena",
   "friend_ids": ["artemis", "zeus", "codex"]
 }
@@ -325,6 +332,7 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
   "identity_id": "athena",
   "session_ids": ["athena-artemis", "athena-zeus"]
 }
@@ -354,6 +362,7 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
   "identity_id": "athena",
   "query": "planning lessons from the Artemis project",
   "top_content_n": 3,
@@ -387,6 +396,10 @@ Response:
 
 These are compact session tools built on top of `SessionBook`.
 
+All sandbox-port session APIs require:
+- `actor_identity_id`
+- `Memory` checks that the actor belongs to the target session
+
 ### `POST /session/recent`
 
 Purpose:
@@ -397,6 +410,7 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
   "session_id": "athena-artemis",
   "query": "recent discussion about deployment",
   "top_k": 8,
@@ -447,6 +461,7 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
   "session_id": "athena-artemis",
   "query": "diagram about API architecture",
   "top_k": 10,
@@ -486,6 +501,7 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
   "session_id": "athena-artemis",
   "limit": 10
 }
@@ -503,7 +519,38 @@ Response:
 ]
 ```
 
-## 5. Skill APIs
+## 5. Resource Discovery
+
+### `POST /resources/list`
+
+Purpose:
+- list the mounted resources available in one session with effective `ro` / `rw`
+
+Request:
+
+```json
+{
+  "actor_identity_id": "athena",
+  "session_id": "athena-artemis"
+}
+```
+
+Response:
+
+```json
+{
+  "results": [
+    {
+      "id": "workspace-main",
+      "mode": "rw",
+      "type": "context_tree",
+      "summary": "workspace summary"
+    }
+  ]
+}
+```
+
+## 6. Skill APIs
 
 These are discovery/install tools over sandbox-visible skills.
 
@@ -512,7 +559,12 @@ Visible categories:
 - `builtin`
 - optional `user`
 
-Visibility is filtered by the normal identity's coarse skill allow/deny config.
+Visibility is filtered at two levels:
+- sandbox whitelist/blacklist
+- normal-identity whitelist/blacklist
+
+All sandbox-port skill APIs require:
+- `actor_identity_id`
 
 ### `POST /skills/list`
 
@@ -523,7 +575,7 @@ Request:
 
 ```json
 {
-  "identity_id": "athena"
+  "actor_identity_id": "athena"
 }
 ```
 
@@ -551,7 +603,7 @@ Request:
 
 ```json
 {
-  "identity_id": "athena",
+  "actor_identity_id": "athena",
   "query": "read a file from local disk",
   "limit": 5,
   "min_score": 0.3
@@ -584,7 +636,7 @@ Request:
 
 ```json
 {
-  "identity_id": "athena",
+  "actor_identity_id": "athena",
   "name": "context",
   "category": "shortlist"
 }
@@ -610,10 +662,16 @@ Response:
 Purpose:
 - list configured trusted skill hubs available for installation
 
+Rule:
+- requires the explicit capability token `install_skill`
+- privileged capability tokens are explicit-whitelist only
+
 Request:
 
 ```json
-{}
+{
+  "actor_identity_id": "athena"
+}
 ```
 
 Response:
@@ -640,12 +698,13 @@ Constraints:
 - caller cannot pass arbitrary URLs
 - `hub_id` must already exist in `Memory` config
 - current v1 behavior is folder install only, with no post-install hooks
+- requires the explicit capability token `install_skill`
 
 Request:
 
 ```json
 {
-  "identity_id": "athena",
+  "actor_identity_id": "athena",
   "hub_id": "clawhub",
   "skill_name": "git-helper",
   "force": false
@@ -664,17 +723,26 @@ Response:
 }
 ```
 
-## 5. Access Model
+## 7. Access Model
 
 At the `Memory` level:
 
 - sandbox-port callers can only access the associated sandbox
 - control-port callers in system space can access all configured sandboxes
+- `Memory` is the final gate for sandbox-port access
 
-Finer permission logic such as identity-level read/write policy belongs above
-`Memory`, normally in `Brain` and later `Nerve`.
+For sandbox-port calls:
 
-## 6. Model Backends for ContexTree
+- identity-tree access is self-only
+- session APIs require participant membership
+- resource-tree access requires a session context and a mounted-resource permission
+- resource writes require both session `rw` and resource mount `rw`
+- normal skill visibility is filtered by sandbox + identity allow/deny policy
+- privileged capability tokens such as `install_skill` are explicit-whitelist only
+
+Control-port system-space APIs are the bypass surface for admin and orchestration.
+
+## 8. Model Backends for ContexTree
 
 `ContexTree`-backed features use sandbox-global backend defaults from
 `Memory.json` under `context_defaults`, with optional per-resource override

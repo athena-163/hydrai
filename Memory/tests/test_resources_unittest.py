@@ -215,7 +215,14 @@ class MemorySandboxAPITests(unittest.TestCase):
             ident_root = os.path.join(sandbox_root, "identities", "athena")
             IdentityState.create(ident_root, embedder=_FakeEmbedder())
             session_root = os.path.join(sandbox_root, "sessions", "chat-1")
-            SessionBook.create(session_root, embedder=_FakeEmbedder())
+            SessionBook.create(
+                session_root,
+                embedder=_FakeEmbedder(),
+                config={
+                    "identities": {"athena": "rw"},
+                    "resources": {"workspace-main": "rw"},
+                },
+            )
 
             api = MemorySandboxAPI(
                 storage_root,
@@ -230,6 +237,8 @@ class MemorySandboxAPITests(unittest.TestCase):
                 path="notes.md",
                 content="diagram notes",
                 summary="diagram reference",
+                actor_identity_id="athena",
+                session_id="chat-1",
             )
             api.append(
                 target_type="resource",
@@ -237,12 +246,26 @@ class MemorySandboxAPITests(unittest.TestCase):
                 path="notes.md",
                 content="\nextra",
                 summary="diagram reference",
+                actor_identity_id="athena",
+                session_id="chat-1",
             )
-            read_result = api.read(target_type="resource", target_id="workspace-main", paths=["notes.md"])
+            read_result = api.read(
+                target_type="resource",
+                target_id="workspace-main",
+                paths=["notes.md"],
+                actor_identity_id="athena",
+                session_id="chat-1",
+            )
             self.assertIn("diagram notes", read_result["notes.md"])
             self.assertIn("extra", read_result["notes.md"])
 
-            search_result = api.search(target_type="resource", target_id="workspace-main", query_text="diagram")
+            search_result = api.search(
+                target_type="resource",
+                target_id="workspace-main",
+                query_text="diagram",
+                actor_identity_id="athena",
+                session_id="chat-1",
+            )
             self.assertTrue(search_result["results"])
 
             api.write(
@@ -251,8 +274,14 @@ class MemorySandboxAPITests(unittest.TestCase):
                 path="dynamics/self.md",
                 content="focused",
                 summary="self state",
+                actor_identity_id="athena",
             )
-            identity_read = api.read(target_type="identity", target_id="athena", paths=["dynamics/self.md"])
+            identity_read = api.read(
+                target_type="identity",
+                target_id="athena",
+                paths=["dynamics/self.md"],
+                actor_identity_id="athena",
+            )
             self.assertEqual(identity_read["dynamics/self.md"], "focused")
 
             api.write(
@@ -261,11 +290,24 @@ class MemorySandboxAPITests(unittest.TestCase):
                 path="notes.md",
                 content="session note",
                 summary="session state",
+                actor_identity_id="athena",
             )
-            session_view = api.view(target_type="session", target_id="chat-1", depth=1, summary_depth=1)
+            session_view = api.view(
+                target_type="session",
+                target_id="chat-1",
+                depth=1,
+                summary_depth=1,
+                actor_identity_id="athena",
+            )
             self.assertTrue(any(item["path"] == "notes.md" for item in session_view))
 
-            delete_result = api.delete(target_type="resource", target_id="workspace-main", path="notes.md")
+            delete_result = api.delete(
+                target_type="resource",
+                target_id="workspace-main",
+                path="notes.md",
+                actor_identity_id="athena",
+                session_id="chat-1",
+            )
             self.assertEqual(delete_result, {"ok": True, "path": "notes.md"})
 
     def test_brain_access_cannot_escape_sandbox_space(self):
@@ -274,11 +316,16 @@ class MemorySandboxAPITests(unittest.TestCase):
             outsider_root = os.path.join(tmp, "outside-root")
             os.makedirs(outsider_root, exist_ok=True)
             ResourceRegistry(sandbox_root).register_resource("outside", outsider_root)
+            IdentityState.create(os.path.join(sandbox_root, "identities", "athena"))
+            SessionBook.create(
+                os.path.join(sandbox_root, "sessions", "chat-1"),
+                config={"identities": {"athena": "rw"}, "resources": {"outside": "rw"}},
+            )
 
             api = MemorySandboxAPI(storage_root, "alpha", sandbox_space_root=sandbox_home)
 
             with self.assertRaises(PermissionError):
-                api.view(target_type="resource", target_id="outside")
+                api.view(target_type="resource", target_id="outside", actor_identity_id="athena", session_id="chat-1")
 
     def test_system_access_can_read_outside_registered_resource(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -298,6 +345,46 @@ class MemorySandboxAPITests(unittest.TestCase):
 
             result = api.read(target_type="resource", target_id="outside", paths=["public.md"])
             self.assertEqual(result["public.md"], "hello")
+
+    def test_sandbox_access_requires_session_permissions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_root, sandbox_root, sandbox_home = self._make_layout(tmp)
+            resource_root = os.path.join(sandbox_home, "workspace")
+            os.makedirs(resource_root, exist_ok=True)
+            ResourceRegistry(sandbox_root).register_resource("workspace-main", resource_root)
+
+            IdentityState.create(os.path.join(sandbox_root, "identities", "athena"), embedder=_FakeEmbedder())
+            IdentityState.create(os.path.join(sandbox_root, "identities", "artemis"), embedder=_FakeEmbedder())
+            SessionBook.create(
+                os.path.join(sandbox_root, "sessions", "chat-1"),
+                embedder=_FakeEmbedder(),
+                config={
+                    "identities": {"athena": "ro"},
+                    "resources": {"workspace-main": "ro"},
+                },
+            )
+            api = MemorySandboxAPI(storage_root, "alpha", sandbox_space_root=sandbox_home, embedder=_FakeEmbedder())
+
+            listed = api.list_accessible_resources(actor_identity_id="athena", session_id="chat-1")
+            self.assertEqual(listed["results"][0]["mode"], "ro")
+
+            with self.assertRaises(PermissionError):
+                api.write(
+                    target_type="resource",
+                    target_id="workspace-main",
+                    path="notes.md",
+                    content="blocked",
+                    actor_identity_id="athena",
+                    session_id="chat-1",
+                )
+
+            with self.assertRaises(PermissionError):
+                api.read(
+                    target_type="identity",
+                    target_id="artemis",
+                    paths=["PERSONA.md"],
+                    actor_identity_id="athena",
+                )
 
 
 if __name__ == "__main__":

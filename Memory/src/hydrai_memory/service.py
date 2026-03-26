@@ -14,6 +14,7 @@ from hydrai_memory.auth import InternalAuthGate
 from hydrai_memory.brain_bootstrap import BrainBootstrapAPI
 from hydrai_memory.config import SandboxConfig, ServiceConfig
 from hydrai_memory.identity_state import IdentityBrainAPI, IdentityStore
+from hydrai_memory.policy import SandboxPolicy
 from hydrai_memory.resources import MemorySandboxAPI, ResourceRegistry
 from hydrai_memory.sessionbook import SessionBrainAPI, SessionStore
 from hydrai_memory.skillset import SkillManager
@@ -51,6 +52,12 @@ class SandboxRuntime:
         self.sandbox_config = sandbox_config
         self._mutation_lock = threading.Lock()
         self.resource_registry = ResourceRegistry(self.sandbox_root)
+        self.policy = SandboxPolicy(
+            self.service_config.storage_root,
+            self.sandbox_config.sandbox_id,
+            sandbox_skill_whitelist=self.sandbox_config.skill_whitelist,
+            sandbox_skill_blacklist=self.sandbox_config.skill_blacklist,
+        )
         self.identity_store = IdentityStore(
             self.service_config.storage_root,
             self.sandbox_config.sandbox_id,
@@ -68,6 +75,8 @@ class SandboxRuntime:
             self.sandbox_config.sandbox_id,
             trusted_hubs=self.service_config.trusted_skill_hubs,
             config_path=self.service_config.config_path,
+            sandbox_skill_whitelist=self.sandbox_config.skill_whitelist,
+            sandbox_skill_blacklist=self.sandbox_config.skill_blacklist,
         )
         self.skill_manager.initialize_defaults()
         self.brain_bootstrap = BrainBootstrapAPI(
@@ -122,6 +131,7 @@ class SandboxRuntime:
                 "tree_write": "POST /tree/write",
                 "tree_append": "POST /tree/append",
                 "tree_delete": "POST /tree/delete",
+                "resource_list": "POST /resources/list",
                 "brain_bootstrap": "POST /brain/bootstrap",
                 "identity_relations": "POST /identity/relations",
                 "identity_sessions": "POST /identity/sessions",
@@ -256,6 +266,8 @@ class MemoryService:
 
     def _dispatch_tree(self, sandbox: SandboxRuntime, sandbox_scope: bool, action: str, body: dict[str, Any]) -> Any:
         api = self._tree_api(sandbox, sandbox_scope)
+        actor_identity_id = str(body.get("actor_identity_id") or "")
+        session_id = str(body.get("session_id") or "")
         if action == "view":
             return api.view(
                 target_type=str(body.get("target_type") or ""),
@@ -263,12 +275,16 @@ class MemoryService:
                 path=str(body.get("path") or ""),
                 depth=int(body.get("depth", 2)),
                 summary_depth=int(body.get("summary_depth", 1)),
+                actor_identity_id=actor_identity_id,
+                session_id=session_id,
             )
         if action == "read":
             return api.read(
                 target_type=str(body.get("target_type") or ""),
                 target_id=str(body.get("target_id") or ""),
                 paths=list(body.get("paths") or []),
+                actor_identity_id=actor_identity_id,
+                session_id=session_id,
             )
         if action == "search":
             return api.search(
@@ -279,6 +295,8 @@ class MemoryService:
                 top_k=int(body.get("top_k", 10)),
                 min_score=float(body.get("min_score", 0.3)),
                 paths=list(body.get("paths") or []) if body.get("paths") is not None else None,
+                actor_identity_id=actor_identity_id,
+                session_id=session_id,
             )
         if action == "write":
             return sandbox.mutate(
@@ -288,6 +306,8 @@ class MemoryService:
                     path=str(body.get("path") or ""),
                     content=str(body.get("content") or ""),
                     summary=str(body.get("summary") or ""),
+                    actor_identity_id=actor_identity_id,
+                    session_id=session_id,
                 )
             )
         if action == "append":
@@ -298,6 +318,8 @@ class MemoryService:
                     path=str(body.get("path") or ""),
                     content=str(body.get("content") or ""),
                     summary=str(body.get("summary") or ""),
+                    actor_identity_id=actor_identity_id,
+                    session_id=session_id,
                 )
             )
         if action == "delete":
@@ -306,19 +328,40 @@ class MemoryService:
                     target_type=str(body.get("target_type") or ""),
                     target_id=str(body.get("target_id") or ""),
                     path=str(body.get("path") or ""),
+                    actor_identity_id=actor_identity_id,
+                    session_id=session_id,
                 )
             )
         raise HttpError(404, "not found")
 
+    def _require_identity_self_access(self, sandbox: SandboxRuntime, identity_id: str, actor_identity_id: str) -> None:
+        sandbox.policy.authorize_tree(
+            target_type="identity",
+            target_id=identity_id,
+            actor_identity_id=actor_identity_id,
+            embedder=sandbox.tree_api_sandbox.embedder,
+            config_path=sandbox.service_config.config_path,
+        )
+
+    def _require_known_actor(self, sandbox: SandboxRuntime, actor_identity_id: str) -> None:
+        actor = str(actor_identity_id or "").strip()
+        if not actor:
+            raise ValueError("actor_identity_id is required")
+        if not sandbox.policy.identity_like_exists(actor):
+            raise FileNotFoundError(f"unknown actor identity: {actor}")
+
     def _dispatch_identity_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         api = sandbox.identity_brain
+        identity_id = str(body.get("identity_id") or "")
+        actor_identity_id = str(body.get("actor_identity_id") or "")
+        self._require_identity_self_access(sandbox, identity_id, actor_identity_id)
         if action == "relations":
-            return api.identity_relations(str(body.get("identity_id") or ""), list(body.get("friend_ids") or []))
+            return api.identity_relations(identity_id, list(body.get("friend_ids") or []))
         if action == "sessions":
-            return api.identity_sessions(str(body.get("identity_id") or ""), list(body.get("session_ids") or []))
+            return api.identity_sessions(identity_id, list(body.get("session_ids") or []))
         if action == "memorables-search":
             return api.identity_memorables_search(
-                str(body.get("identity_id") or ""),
+                identity_id,
                 str(body.get("query") or ""),
                 top_content_n=int(body.get("top_content_n", 3)),
                 top_summary_k=int(body.get("top_summary_k", 5)),
@@ -328,50 +371,67 @@ class MemoryService:
 
     def _dispatch_session_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         api = sandbox.session_brain
+        session_id = str(body.get("session_id") or "")
+        actor_identity_id = str(body.get("actor_identity_id") or "")
+        sandbox.policy.authorize_tree(
+            target_type="session",
+            target_id=session_id,
+            actor_identity_id=actor_identity_id,
+            embedder=sandbox.tree_api_sandbox.embedder,
+            config_path=sandbox.service_config.config_path,
+        )
         if action == "recent":
             return api.session_recent(
-                str(body.get("session_id") or ""),
+                session_id,
                 query=str(body.get("query") or ""),
                 top_k=int(body.get("top_k", 10)),
                 min_score=float(body.get("min_score", 0.3)),
             )
         if action == "search":
             return api.session_search_text(
-                str(body.get("session_id") or ""),
+                session_id,
                 str(body.get("query") or ""),
                 top_k=int(body.get("top_k", 10)),
                 min_score=float(body.get("min_score", 0.3)),
             )
         if action == "latest-attachments":
             return api.session_latest_attachments(
-                str(body.get("session_id") or ""),
+                session_id,
                 limit=int(body.get("limit", 10)),
             )
         raise HttpError(404, "not found")
 
+    def _require_skill_capability(self, sandbox: SandboxRuntime, actor_identity_id: str, capability_name: str) -> None:
+        if not sandbox.skill_manager.capability_allowed(actor_identity_id, capability_name):
+            raise PermissionError(f"identity may not use capability: {capability_name}")
+
     def _dispatch_skill_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         manager = sandbox.skill_manager
+        actor_identity_id = str(body.get("actor_identity_id") or "")
+        self._require_known_actor(sandbox, actor_identity_id)
         if action == "list":
-            return manager.skill_list(str(body.get("identity_id") or ""))
+            return manager.skill_list(actor_identity_id)
         if action == "search":
             return manager.skill_search(
-                str(body.get("identity_id") or ""),
+                actor_identity_id,
                 str(body.get("query") or ""),
                 limit=int(body.get("limit", 10)),
                 min_score=float(body.get("min_score", 0.3)),
             )
         if action == "read":
             return manager.skill_read(
-                str(body.get("identity_id") or ""),
+                actor_identity_id,
                 str(body.get("name") or ""),
                 category=str(body.get("category") or ""),
             )
         if action == "trusted-sites":
+            self._require_skill_capability(sandbox, actor_identity_id, "install_skill")
             return {"results": manager.list_trusted_sites()}
         if action == "install":
+            self._require_skill_capability(sandbox, actor_identity_id, "install_skill")
             return sandbox.mutate(
                 lambda: manager.install_skill(
-                    str(body.get("identity_id") or ""),
+                    actor_identity_id,
                     str(body.get("hub_id") or ""),
                     str(body.get("skill_name") or ""),
                     force=bool(body.get("force", False)),
@@ -381,14 +441,40 @@ class MemoryService:
 
     def _dispatch_brain_api(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         if action == "bootstrap":
+            identity_id = str(body.get("identity_id") or "")
+            sandbox.policy.authorize_tree(
+                target_type="identity",
+                target_id=identity_id,
+                actor_identity_id=identity_id,
+                embedder=sandbox.tree_api_sandbox.embedder,
+                config_path=sandbox.service_config.config_path,
+            )
+            session_id = str(body.get("session_id") or "")
+            if session_id:
+                sandbox.policy.authorize_tree(
+                    target_type="session",
+                    target_id=session_id,
+                    actor_identity_id=identity_id,
+                    embedder=sandbox.tree_api_sandbox.embedder,
+                    config_path=sandbox.service_config.config_path,
+                )
             return sandbox.brain_bootstrap.bootstrap(
-                str(body.get("identity_id") or ""),
+                identity_id,
                 requestor_id=str(body.get("requestor_id") or ""),
-                session_id=str(body.get("session_id") or ""),
+                session_id=session_id,
                 query=str(body.get("query") or ""),
                 top_k=int(body.get("top_k", 10)),
                 min_score=float(body.get("min_score", 0.3)),
                 attachment_limit=int(body.get("attachment_limit", 5)),
+            )
+        raise HttpError(404, "not found")
+
+    def _dispatch_resource_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
+        api = sandbox.tree_api_sandbox
+        if action == "list":
+            return api.list_accessible_resources(
+                actor_identity_id=str(body.get("actor_identity_id") or ""),
+                session_id=str(body.get("session_id") or ""),
             )
         raise HttpError(404, "not found")
 
@@ -627,6 +713,8 @@ class MemoryService:
     def _dispatch_sandbox_post(self, sandbox: SandboxRuntime, parts: list[str], body: dict[str, Any]) -> Any:
         if len(parts) == 2 and parts[0] == "tree":
             return self._dispatch_tree(sandbox, True, parts[1], body)
+        if len(parts) == 2 and parts[0] == "resources":
+            return self._dispatch_resource_brain(sandbox, parts[1], body)
         if len(parts) == 2 and parts[0] == "identity":
             return self._dispatch_identity_brain(sandbox, parts[1], body)
         if len(parts) == 2 and parts[0] == "session":

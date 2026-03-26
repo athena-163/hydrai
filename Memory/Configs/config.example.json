@@ -27,7 +27,11 @@
     {
       "id": "alpha",
       "port": 62001,
-      "sandbox_space_root": "/Users/olympus"
+      "sandbox_space_root": "/Users/olympus",
+      "skills": {
+        "whitelist": [],
+        "blacklist": []
+      }
     }
   ]
 }

@@ -1890,6 +1890,7 @@ Base endpoints:
 
 1. `GET /health`
 2. `GET /help`
+3. `POST /resources/list`
 
 Generic tree APIs over registered resources, identities, humans, native, and sessions:
 
@@ -1966,7 +1967,7 @@ Where:
    3. `summary`
    4. `participants`
    5. `resources`
-   6. `mounted_resources` with top-level resource summaries
+   6. `mounted_resources` with top-level resource summaries and `ro` / `rw`
    7. `latest_attachments`
    8. query-driven `search` hits
 3. `skill_shortlist` contains the full rendered `SKILL.md` text for each
@@ -1975,14 +1976,33 @@ Where:
 This endpoint should remain deterministic only. It may perform search and
 retrieval through `Memory`, but it must not perform any hidden reasoning.
 
-### 22.4 Auth Mode
+### 22.4 Sandbox Access Gate
+
+`Memory` should be the final gate for sandbox-port access.
+
+All sandbox-port calls should carry an acting identity context where relevant.
+
+Rules:
+
+1. identity-tree access is self-only
+2. session APIs require that the actor belongs to the target session
+3. resource-tree access requires a session context and a mounted-resource permission
+4. resource writes require both:
+   1. session participant mode `rw`
+   2. mounted resource mode `rw`
+5. control-port system-space APIs remain the bypass/admin surface
+
+`Brain` may still narrow access further, but it should not be the final
+authority boundary.
+
+### 22.5 Auth Mode
 
 Like the rest of Hydrai:
 
 1. `dev` mode bypasses internal auth intentionally
 2. `secure` mode requires valid Hydrai internal tokens on both control and sandbox ports
 
-### 22.5 Concurrency Rule
+### 22.6 Concurrency Rule
 
 The service layer should preserve the already stated practical rule:
 
@@ -2036,11 +2056,27 @@ This should use the existing `SkillSet.initialize(...)` behavior:
 
 This matches the retained AIOS behavior and keeps Hydrai bootstrap simple.
 
-### 23.3 Identity Filtering
+### 23.3 Skill Visibility Filtering
 
 Actual visible skills for one running identity are not just “all skills.”
 
-The coarse filter remains identity-local config policy:
+Filtering should happen at two levels:
+
+1. sandbox policy from `Memory.json`
+2. identity-local config policy for normal identities
+
+Sandbox-level shape:
+
+```json
+{
+  "skills": {
+    "whitelist": [],
+    "blacklist": []
+  }
+}
+```
+
+Identity-local shape remains:
 
 ```json
 {
@@ -2054,9 +2090,21 @@ The coarse filter remains identity-local config policy:
 Rules:
 
 1. filtering is by skill name
-2. empty whitelist means allow all by default
-3. non-empty whitelist restricts to listed skills
+2. sandbox and identity filters are intersected
+3. empty whitelist means allow all by default for normal skill visibility
 4. blacklist is always subtractive
+
+Privileged capability tokens are different.
+
+Reserved capability tokens may include:
+
+1. `install_skill`
+
+For these capability tokens:
+
+1. access is still computed from sandbox + identity whitelist/blacklist
+2. unlike normal skill visibility, access is explicit-whitelist only
+3. blacklist remains subtractive
 
 This filter is still coarse policy only.
 
@@ -2071,7 +2119,7 @@ List visible skills across the known categories.
 Input:
 
 1. `sandbox_id` is implicit from the sandbox port
-2. `identity_id`
+2. `actor_identity_id`
 
 Return:
 
@@ -2086,7 +2134,7 @@ Behavior:
 1. list from `shortlist/`
 2. list from `builtin/`
 3. list from `user/` when present
-4. apply the identity coarse skill filter before returning results
+4. apply the effective sandbox + identity skill filter before returning results
 
 #### 23.4.2 `skill_search`
 
@@ -2094,7 +2142,7 @@ Search visible skills by plain text query.
 
 Input:
 
-1. `identity_id`
+1. `actor_identity_id`
 2. `query`
 3. optional `limit`
 4. optional `min_score`
@@ -2113,7 +2161,7 @@ Behavior:
 
 1. search across `shortlist`, `builtin`, and optional `user`
 2. use `SkillSet.search_skills(...)`
-3. apply identity coarse skill filtering after category aggregation
+3. apply effective sandbox + identity skill filtering after category aggregation
 
 #### 23.4.3 `skill_read`
 
@@ -2121,7 +2169,7 @@ Read one visible skill by exact name.
 
 Input:
 
-1. `identity_id`
+1. `actor_identity_id`
 2. `name`
 3. optional exact `category`
 
@@ -2142,6 +2190,57 @@ Behavior:
    3. `user`
 3. render prompt text with `SkillSet.render_prompt(...)`
 4. if filtered or not found, return empty results
+
+#### 23.4.4 `resources_list`
+
+List the mounted resources available in one session with effective `ro` / `rw`.
+
+Input:
+
+1. `actor_identity_id`
+2. `session_id`
+
+Return:
+
+1. `results` list of:
+   1. `id`
+   2. `mode`
+   3. `type`
+   4. `summary`
+
+Behavior:
+
+1. require session participant membership
+2. return only the resources mounted in that session
+3. include each mounted resource's effective mode
+
+#### 23.4.5 `skill_trusted_sites`
+
+List configured trusted skill hubs.
+
+Input:
+
+1. `actor_identity_id`
+
+Behavior:
+
+1. require capability token `install_skill`
+
+#### 23.4.6 `skill_install`
+
+Install one skill from a trusted configured hub into `skills/user/`.
+
+Input:
+
+1. `actor_identity_id`
+2. `hub_id`
+3. `skill_name`
+4. optional `force`
+
+Behavior:
+
+1. require capability token `install_skill`
+2. do not accept arbitrary remote URLs from the caller
 
 ### 23.5 What Memory Does Not Own
 

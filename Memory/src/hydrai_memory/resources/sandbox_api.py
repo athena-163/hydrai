@@ -7,6 +7,7 @@ from typing import Any
 
 from hydrai_memory.contexttree import ContexTree, Embedder
 from hydrai_memory.identity_state import IdentityState
+from hydrai_memory.policy import SandboxPolicy
 from hydrai_memory.resources.core import ResourceRegistry
 from hydrai_memory.sessionbook import SessionBook
 
@@ -50,6 +51,7 @@ class MemorySandboxAPI:
         self.embedder = embedder
         self.config_path = os.path.realpath(config_path) if config_path else None
         self.registry = ResourceRegistry(self.sandbox_root)
+        self.policy = SandboxPolicy(self.storage_root, self.sandbox_id)
 
     def _identity_root(self, category: str, identity_id: str) -> str:
         return os.path.join(self.sandbox_root, category, _validate_token(identity_id, "identity_id"))
@@ -89,7 +91,25 @@ class MemorySandboxAPI:
         self._ensure_brain_can_access_path(root)
         return SessionBook(root, embedder=self.embedder, config_path=self.config_path).tree
 
-    def _resolve_tree(self, target_type: str, target_id: str) -> ContexTree:
+    def _resolve_tree(
+        self,
+        target_type: str,
+        target_id: str,
+        *,
+        actor_identity_id: str = "",
+        session_id: str = "",
+        write: bool = False,
+    ) -> ContexTree:
+        self.policy.authorize_tree(
+            target_type=target_type,
+            target_id=target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+            write=write,
+            system_access=self.system_access,
+            embedder=self.embedder,
+            config_path=self.config_path,
+        )
         kind = str(target_type or "").strip().lower()
         if kind == "resource":
             return self._resource_tree(target_id)
@@ -111,11 +131,31 @@ class MemorySandboxAPI:
         path: str = "",
         depth: int = 2,
         summary_depth: int = 1,
+        actor_identity_id: str = "",
+        session_id: str = "",
     ) -> list[dict]:
-        return self._resolve_tree(target_type, target_id).view(path=path, depth=depth, summary_depth=summary_depth)
+        return self._resolve_tree(
+            target_type,
+            target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+        ).view(path=path, depth=depth, summary_depth=summary_depth)
 
-    def read(self, *, target_type: str, target_id: str, paths: list[str]) -> dict[str, Any]:
-        return self._resolve_tree(target_type, target_id).read(paths)
+    def read(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        paths: list[str],
+        actor_identity_id: str = "",
+        session_id: str = "",
+    ) -> dict[str, Any]:
+        return self._resolve_tree(
+            target_type,
+            target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+        ).read(paths)
 
     def search(
         self,
@@ -127,8 +167,15 @@ class MemorySandboxAPI:
         top_k: int = 10,
         min_score: float = 0.3,
         paths: list[str] | None = None,
+        actor_identity_id: str = "",
+        session_id: str = "",
     ) -> dict[str, Any]:
-        tree = self._resolve_tree(target_type, target_id)
+        tree = self._resolve_tree(
+            target_type,
+            target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+        )
         if query_embed is not None:
             return tree.search_by_embedding(query_embed, top_k=top_k, min_score=min_score, paths=paths)
         if query_text is not None:
@@ -143,8 +190,16 @@ class MemorySandboxAPI:
         path: str,
         content: str,
         summary: str = "",
+        actor_identity_id: str = "",
+        session_id: str = "",
     ) -> dict[str, Any]:
-        self._resolve_tree(target_type, target_id).write_text(path, content, summary=summary)
+        self._resolve_tree(
+            target_type,
+            target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+            write=True,
+        ).write_text(path, content, summary=summary)
         return {"ok": True, "path": path}
 
     def append(
@@ -155,10 +210,42 @@ class MemorySandboxAPI:
         path: str,
         content: str,
         summary: str = "",
+        actor_identity_id: str = "",
+        session_id: str = "",
     ) -> dict[str, Any]:
-        self._resolve_tree(target_type, target_id).append_text(path, content, summary=summary)
+        self._resolve_tree(
+            target_type,
+            target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+            write=True,
+        ).append_text(path, content, summary=summary)
         return {"ok": True, "path": path}
 
-    def delete(self, *, target_type: str, target_id: str, path: str) -> dict[str, Any]:
-        self._resolve_tree(target_type, target_id).delete(path)
+    def delete(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        path: str,
+        actor_identity_id: str = "",
+        session_id: str = "",
+    ) -> dict[str, Any]:
+        self._resolve_tree(
+            target_type,
+            target_id,
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+            write=True,
+        ).delete(path)
         return {"ok": True, "path": path}
+
+    def list_accessible_resources(self, *, actor_identity_id: str, session_id: str) -> dict[str, Any]:
+        return self.policy.list_accessible_resources(
+            actor_identity_id=actor_identity_id,
+            session_id=session_id,
+            registry=self.registry,
+            embedder=self.embedder,
+            config_path=self.config_path,
+            system_access=self.system_access,
+        )

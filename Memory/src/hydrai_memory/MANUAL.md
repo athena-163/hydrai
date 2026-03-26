@@ -7,23 +7,24 @@ Core surfaces:
 1. `GET /health`
 2. `GET /help`
 3. `POST /brain/bootstrap`
-4. `POST /tree/view`
-5. `POST /tree/read`
-6. `POST /tree/search`
-7. `POST /tree/write`
-8. `POST /tree/append`
-9. `POST /tree/delete`
-10. `POST /identity/relations`
-11. `POST /identity/sessions`
-12. `POST /identity/memorables-search`
-13. `POST /session/recent`
-14. `POST /session/search`
-15. `POST /session/latest-attachments`
-16. `POST /skills/list`
-17. `POST /skills/search`
-18. `POST /skills/read`
-19. `POST /skills/trusted-sites`
-20. `POST /skills/install`
+4. `POST /resources/list`
+5. `POST /tree/view`
+6. `POST /tree/read`
+7. `POST /tree/search`
+8. `POST /tree/write`
+9. `POST /tree/append`
+10. `POST /tree/delete`
+11. `POST /identity/relations`
+12. `POST /identity/sessions`
+13. `POST /identity/memorables-search`
+14. `POST /session/recent`
+15. `POST /session/search`
+16. `POST /session/latest-attachments`
+17. `POST /skills/list`
+18. `POST /skills/search`
+19. `POST /skills/read`
+20. `POST /skills/trusted-sites`
+21. `POST /skills/install`
 
 `/brain/bootstrap` is the normal root-entry API for `Brain`.
 
@@ -57,6 +58,16 @@ Bootstrap returns:
 5. `mounted_resources` with top-level summaries
 6. `latest_attachments`
 7. query-driven `search` hits
+
+Sandbox-port calls are actor-aware, and `Memory` is the final gate for:
+
+1. session participant access
+2. mounted resource `ro` / `rw`
+3. self-only identity-tree access
+4. sandbox plus identity skill filtering
+
+Normal skill visibility uses sandbox + identity filtering. Privileged capability
+tokens such as `install_skill` are explicit-whitelist only.
 
 Generic tree APIs operate on:
 

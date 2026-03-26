@@ -16,6 +16,8 @@ class SandboxConfig:
     sandbox_id: str
     port: int
     sandbox_space_root: str
+    skill_whitelist: tuple[str, ...]
+    skill_blacklist: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,14 @@ class ServiceConfig:
     control_port: int
     trusted_skill_hubs: tuple[TrustedSkillHub, ...]
     sandboxes: tuple[SandboxConfig, ...]
+
+
+def _require_token_list(value: Any, field_name: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list")
+    return tuple(_require_token(item, f"{field_name}[]") for item in value)
 
 
 def _require_int(value: Any, field_name: str) -> int:
@@ -76,11 +86,18 @@ def load_config(path: str) -> ServiceConfig:
         if port != 0 and port in seen_ports:
             raise ValueError(f"duplicate port: {port}")
         sandbox_space_root = os.path.realpath(os.path.expanduser(str(item.get("sandbox_space_root") or "")))
+        raw_skills = item.get("skills", {})
+        if raw_skills is None:
+            raw_skills = {}
+        if not isinstance(raw_skills, dict):
+            raise ValueError(f"sandbox[{sandbox_id}].skills must be an object")
         sandboxes.append(
             SandboxConfig(
                 sandbox_id=sandbox_id,
                 port=port,
                 sandbox_space_root=sandbox_space_root,
+                skill_whitelist=_require_token_list(raw_skills.get("whitelist"), f"sandbox[{sandbox_id}].skills.whitelist"),
+                skill_blacklist=_require_token_list(raw_skills.get("blacklist"), f"sandbox[{sandbox_id}].skills.blacklist"),
             )
         )
         seen_ids.add(sandbox_id)

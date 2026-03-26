@@ -85,10 +85,27 @@ class SkillManagerTests(unittest.TestCase):
             self.assertEqual(manager.skill_search("athena", "attachments")["results"], [])
             self.assertEqual(manager.skill_read("athena", "attachments")["results"], [])
 
+    def test_sandbox_skill_policy_intersects_with_identity_policy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_root = os.path.join(tmp, "memory")
+            self._make_identity(storage_root, {"skills": {"whitelist": ["context", "email", "install_skill"]}})
+            manager = SkillManager(
+                storage_root,
+                "alpha",
+                sandbox_skill_whitelist=("context", "install_skill"),
+                sandbox_skill_blacklist=("email",),
+            )
+            manager.initialize_defaults()
+
+            listing = manager.skill_list("athena")["results"]
+            self.assertEqual({item["name"] for item in listing}, {"context"})
+            self.assertTrue(manager.capability_allowed("athena", "install_skill"))
+            self.assertFalse(manager.capability_allowed("athena", "email"))
+
     def test_install_skill_from_trusted_site(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage_root = os.path.join(tmp, "memory")
-            self._make_identity(storage_root)
+            self._make_identity(storage_root, {"skills": {"whitelist": ["install_skill", "demo-skill"]}})
             hub = self._make_hub(tmp)
             manager = SkillManager(storage_root, "alpha", trusted_hubs=(hub,))
             manager.initialize_defaults()
@@ -106,6 +123,17 @@ class SkillManagerTests(unittest.TestCase):
             self.assertTrue(any(item["category"] == "user" and item["name"] == "demo-skill" for item in listing))
 
             with self.assertRaises(FileExistsError):
+                manager.install_skill("athena", "trusted", "demo-skill")
+
+    def test_install_skill_requires_install_capability(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_root = os.path.join(tmp, "memory")
+            self._make_identity(storage_root)
+            hub = self._make_hub(tmp)
+            manager = SkillManager(storage_root, "alpha", trusted_hubs=(hub,))
+            manager.initialize_defaults()
+
+            with self.assertRaises(PermissionError):
                 manager.install_skill("athena", "trusted", "demo-skill")
 
 

@@ -241,11 +241,12 @@ class MemorySandboxAPI:
         return {"ok": True, "path": path}
 
     def list_accessible_resources(self, *, actor_identity_id: str, session_id: str) -> dict[str, Any]:
-        return self.policy.list_accessible_resources(
+        return self.policy.list_accessible_targets(
             actor_identity_id=actor_identity_id,
-            session_id=session_id,
             registry=self.registry,
+            session_id=session_id,
             embedder=self.embedder,
             config_path=self.config_path,
             system_access=self.system_access,
+            identity_store=None,
         )

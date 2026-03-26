@@ -30,6 +30,13 @@ Generic tree APIs use:
 
 `resource` targets must already be registered in `Memory`.
 
+Sandbox-port generic tree calls are actor-aware:
+
+- `actor_identity_id` is required
+- `session_id` is required for `resource` targets
+- sandbox actors may read but not directly mutate `identity`, `human`, `native`, or `session` trees
+- control-port system-space APIs are the bypass surface
+
 ## 1. Generic Tree APIs
 
 These APIs expose structured file access over managed trees. They are the
@@ -45,6 +52,8 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
+  "session_id": "chat-1",
   "target_type": "resource",
   "target_id": "workspace-main",
   "path": "",
@@ -65,6 +74,8 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
+  "session_id": "chat-1",
   "target_type": "resource",
   "target_id": "workspace-main",
   "paths": ["notes.md", "docs/plan.md"]
@@ -89,6 +100,8 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
+  "session_id": "chat-1",
   "target_type": "resource",
   "target_id": "workspace-main",
   "query_text": "API architecture and machine learning project",
@@ -128,6 +141,8 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
+  "session_id": "chat-1",
   "target_type": "resource",
   "target_id": "workspace-main",
   "path": "notes.md",
@@ -153,8 +168,10 @@ Request:
 
 ```json
 {
-  "target_type": "session",
-  "target_id": "athena-artemis",
+  "actor_identity_id": "athena",
+  "session_id": "athena-artemis",
+  "target_type": "resource",
+  "target_id": "workspace-main",
   "path": "draft.md",
   "content": "\nmore lines",
   "summary": ""
@@ -178,6 +195,8 @@ Request:
 
 ```json
 {
+  "actor_identity_id": "athena",
+  "session_id": "athena-artemis",
   "target_type": "resource",
   "target_id": "workspace-main",
   "path": "old-notes.md"
@@ -209,7 +228,7 @@ Request:
 
 ```json
 {
-  "identity_id": "athena",
+  "actor_identity_id": "athena",
   "requestor_id": "zeus",
   "session_id": "chat-1",
   "query": "summarize the latest design status",
@@ -288,7 +307,6 @@ These are compact identity-specific tools built on top of `IdentityState`.
 
 All sandbox-port identity APIs require:
 - `actor_identity_id`
-- `identity_id` must match the acting identity
 
 ### `POST /identity/relations`
 
@@ -304,7 +322,6 @@ Request:
 ```json
 {
   "actor_identity_id": "athena",
-  "identity_id": "athena",
   "friend_ids": ["artemis", "zeus", "codex"]
 }
 ```
@@ -333,7 +350,6 @@ Request:
 ```json
 {
   "actor_identity_id": "athena",
-  "identity_id": "athena",
   "session_ids": ["athena-artemis", "athena-zeus"]
 }
 ```
@@ -363,7 +379,6 @@ Request:
 ```json
 {
   "actor_identity_id": "athena",
-  "identity_id": "athena",
   "query": "planning lessons from the Artemis project",
   "top_content_n": 3,
   "top_summary_k": 5,
@@ -740,7 +755,7 @@ For sandbox-port calls:
 - normal skill visibility is filtered by sandbox + identity allow/deny policy
 - privileged capability tokens such as `install_skill` are explicit-whitelist only
 
-Control-port system-space APIs are the bypass surface for admin and orchestration.
+Control-port system-space APIs on `Memory` control port `62000` are the bypass surface for admin and orchestration.
 
 ## 8. Model Backends for ContexTree
 

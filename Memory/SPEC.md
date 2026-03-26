@@ -1934,7 +1934,7 @@ Skill Brain APIs:
 
 Request:
 
-1. `identity_id`
+1. `actor_identity_id`
 2. `requestor_id`
 3. optional `session_id`
 4. optional `query`
@@ -1990,7 +1990,8 @@ Rules:
 4. resource writes require both:
    1. session participant mode `rw`
    2. mounted resource mode `rw`
-5. control-port system-space APIs remain the bypass/admin surface
+5. sandbox actors may not directly mutate identity-like trees or session trees
+6. control-port system-space APIs on `Memory` control port `62000` remain the bypass/admin surface
 
 `Brain` may still narrow access further, but it should not be the final
 authority boundary.
@@ -2193,26 +2194,28 @@ Behavior:
 
 #### 23.4.4 `resources_list`
 
-List the mounted resources available in one session with effective `ro` / `rw`.
+List the currently accessible targets for one actor.
 
 Input:
 
 1. `actor_identity_id`
-2. `session_id`
+2. optional `session_id`
 
 Return:
 
 1. `results` list of:
-   1. `id`
-   2. `mode`
-   3. `type`
+   1. `target_type`
+   2. `id`
+   3. `mode`
    4. `summary`
+   5. optional `resource_type`
 
 Behavior:
 
-1. require session participant membership
-2. return only the resources mounted in that session
-3. include each mounted resource's effective mode
+1. always include the actor's own identity-like root as `rw`
+2. include all sessions the actor belongs to, with effective mode
+3. if `session_id` is provided, require participant membership and include that session's mounted resources
+4. include mounted resource effective mode
 
 #### 23.4.5 `skill_trusted_sites`
 

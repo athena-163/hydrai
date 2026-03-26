@@ -52,7 +52,7 @@ class BrainBootstrapAPI:
 
     def bootstrap(
         self,
-        identity_id: str,
+        actor_identity_id: str,
         *,
         requestor_id: str,
         session_id: str = "",
@@ -61,6 +61,7 @@ class BrainBootstrapAPI:
         min_score: float = 0.3,
         attachment_limit: int = 5,
     ) -> dict[str, Any]:
+        identity_id = str(actor_identity_id)
         profile = self.identity_brain.identity_profile(identity_id)
         friend_ids = [str(item.get("id") or "") for item in list(profile.get("friends", []) or []) if str(item.get("id") or "")]
         session_ids = [str(item.get("id") or "") for item in list(profile.get("sessions", []) or []) if str(item.get("id") or "")]

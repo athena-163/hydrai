@@ -44,6 +44,18 @@ class SandboxPolicy:
             for category in ("identities", "human", "native")
         )
 
+    def identity_like_kind(self, identity_id: str) -> str:
+        token = _validate_token(identity_id, "identity_id")
+        mapping = {
+            "identities": "identity",
+            "human": "human",
+            "native": "native",
+        }
+        for category, kind in mapping.items():
+            if os.path.isdir(os.path.join(self.sandbox_root, category, token)):
+                return kind
+        raise FileNotFoundError(f"unknown identity-like participant: {identity_id}")
+
     def load_session_config(
         self,
         session_id: str,
@@ -107,13 +119,15 @@ class SandboxPolicy:
         if kind in {"identity", "human", "native"}:
             if actor != _validate_token(target_id, "target_id"):
                 raise PermissionError("actor may only access its own identity-like tree")
+            if write:
+                raise PermissionError("sandbox actor may not mutate identity-like trees directly")
             return
         if kind == "session":
             mode = self.session_identity_mode(target_id, actor, embedder=embedder, config_path=config_path)
             if mode not in {"ro", "rw"}:
                 raise PermissionError("actor is not a participant in session")
-            if write and mode != "rw":
-                raise PermissionError("actor does not have write access to session")
+            if write:
+                raise PermissionError("sandbox actor may not mutate session trees directly")
             return
         if kind == "resource":
             session_token = _validate_token(session_id, "session_id")
@@ -163,6 +177,83 @@ class SandboxPolicy:
                     "summary": str(item.get("summary") or ""),
                 }
             )
+        return {"results": results}
+
+    def list_accessible_targets(
+        self,
+        *,
+        actor_identity_id: str,
+        registry: ResourceRegistry,
+        session_id: str = "",
+        embedder: Any = None,
+        config_path: str | None = None,
+        system_access: bool = False,
+        identity_store: IdentityStore | None = None,
+    ) -> dict[str, Any]:
+        actor = _validate_token(actor_identity_id, "actor_identity_id")
+        if not self.identity_like_exists(actor):
+            raise FileNotFoundError(f"unknown actor identity: {actor}")
+
+        results: list[dict[str, Any]] = []
+        actor_kind = self.identity_like_kind(actor)
+        persona = ""
+        if identity_store is not None:
+            persona = identity_store.get_identity_like_persona(actor)
+        results.append(
+            {
+                "target_type": actor_kind,
+                "id": actor,
+                "mode": "rw",
+                "summary": persona,
+            }
+        )
+
+        sessions_root = os.path.join(self.sandbox_root, "sessions")
+        if os.path.isdir(sessions_root):
+            for current in sorted(os.listdir(sessions_root)):
+                root = os.path.join(sessions_root, current)
+                if not os.path.isdir(root):
+                    continue
+                try:
+                    cfg = self.load_session_config(current, embedder=embedder, config_path=config_path)
+                except Exception:
+                    continue
+                identities = cfg.get("identities", {})
+                if not isinstance(identities, dict):
+                    continue
+                mode = identities.get(actor, "")
+                if not isinstance(mode, str) or mode not in {"ro", "rw"}:
+                    continue
+                summary = SessionBook(root, embedder=embedder, config_path=config_path).tree.folder_summary()
+                results.append(
+                    {
+                        "target_type": "session",
+                        "id": current,
+                        "mode": mode,
+                        "summary": summary,
+                    }
+                )
+
+        if session_id:
+            resource_results = self.list_accessible_resources(
+                actor_identity_id=actor,
+                session_id=session_id,
+                registry=registry,
+                embedder=embedder,
+                config_path=config_path,
+                system_access=system_access,
+            )["results"]
+            for item in resource_results:
+                results.append(
+                    {
+                        "target_type": "resource",
+                        "id": str(item.get("id") or ""),
+                        "mode": str(item.get("mode") or ""),
+                        "summary": str(item.get("summary") or ""),
+                        "resource_type": str(item.get("type") or ""),
+                    }
+                )
+
         return {"results": results}
 
     def effective_skill_policy(self, identity_store: IdentityStore, identity_id: str) -> tuple[set[str], set[str]]:

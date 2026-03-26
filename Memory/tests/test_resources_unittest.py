@@ -268,13 +268,10 @@ class MemorySandboxAPITests(unittest.TestCase):
             )
             self.assertTrue(search_result["results"])
 
-            api.write(
-                target_type="identity",
-                target_id="athena",
-                path="dynamics/self.md",
-                content="focused",
+            IdentityState(ident_root, embedder=_FakeEmbedder()).write_text(
+                "dynamics/self.md",
+                "focused",
                 summary="self state",
-                actor_identity_id="athena",
             )
             identity_read = api.read(
                 target_type="identity",
@@ -284,13 +281,10 @@ class MemorySandboxAPITests(unittest.TestCase):
             )
             self.assertEqual(identity_read["dynamics/self.md"], "focused")
 
-            api.write(
-                target_type="session",
-                target_id="chat-1",
-                path="notes.md",
-                content="session note",
+            SessionBook(session_root, embedder=_FakeEmbedder()).tree.write_text(
+                "notes.md",
+                "session note",
                 summary="session state",
-                actor_identity_id="athena",
             )
             session_view = api.view(
                 target_type="session",
@@ -366,7 +360,15 @@ class MemorySandboxAPITests(unittest.TestCase):
             api = MemorySandboxAPI(storage_root, "alpha", sandbox_space_root=sandbox_home, embedder=_FakeEmbedder())
 
             listed = api.list_accessible_resources(actor_identity_id="athena", session_id="chat-1")
-            self.assertEqual(listed["results"][0]["mode"], "ro")
+            identity_entries = [item for item in listed["results"] if item["target_type"] == "identity"]
+            session_entries = [item for item in listed["results"] if item["target_type"] == "session"]
+            resource_entries = [item for item in listed["results"] if item["target_type"] == "resource"]
+            self.assertEqual(identity_entries[0]["id"], "athena")
+            self.assertEqual(identity_entries[0]["mode"], "rw")
+            self.assertEqual(session_entries[0]["id"], "chat-1")
+            self.assertEqual(session_entries[0]["mode"], "ro")
+            self.assertEqual(resource_entries[0]["id"], "workspace-main")
+            self.assertEqual(resource_entries[0]["mode"], "ro")
 
             with self.assertRaises(PermissionError):
                 api.write(

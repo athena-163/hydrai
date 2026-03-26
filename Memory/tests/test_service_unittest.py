@@ -194,42 +194,39 @@ class MemoryServiceHttpTests(unittest.TestCase):
 
                     wrote_identity_self = _request_json(
                         "POST",
-                        sandbox_base + "/tree/write",
+                        control_base + "/sandboxes/alpha/tree/write",
                         {
                             "target_type": "identity",
                             "target_id": "athena",
                             "path": "dynamics/self.md",
                             "content": "Keep the system coherent.",
                             "summary": "self guidance",
-                            "actor_identity_id": "athena",
                         },
                     )
                     self.assertTrue(wrote_identity_self["ok"])
 
                     wrote_identity_friend = _request_json(
                         "POST",
-                        sandbox_base + "/tree/write",
+                        control_base + "/sandboxes/alpha/tree/write",
                         {
                             "target_type": "identity",
                             "target_id": "athena",
                             "path": "dynamics/artemis.md",
                             "content": "Trusted scout ally.",
                             "summary": "friend note",
-                            "actor_identity_id": "athena",
                         },
                     )
                     self.assertTrue(wrote_identity_friend["ok"])
 
                     wrote_identity_ongoing = _request_json(
                         "POST",
-                        sandbox_base + "/tree/write",
+                        control_base + "/sandboxes/alpha/tree/write",
                         {
                             "target_type": "identity",
                             "target_id": "athena",
                             "path": "ongoing/chat-1.md",
                             "content": "Continue the design thread.",
                             "summary": "chat continuity",
-                            "actor_identity_id": "athena",
                         },
                     )
                     self.assertTrue(wrote_identity_ongoing["ok"])
@@ -282,7 +279,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         "POST",
                         sandbox_base + "/brain/bootstrap",
                         {
-                            "identity_id": "athena",
+                            "actor_identity_id": "athena",
                             "requestor_id": "zeus",
                             "session_id": "chat-1",
                             "query": "workspace design",
@@ -373,7 +370,7 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         "POST",
                         sandbox_base + "/brain/bootstrap",
                         {
-                            "identity_id": "athena",
+                            "actor_identity_id": "athena",
                             "requestor_id": "zeus",
                             "session_id": "chat-1",
                             "attachment_limit": 3,
@@ -407,14 +404,21 @@ class MemoryServiceHttpTests(unittest.TestCase):
                         sandbox_base + "/resources/list",
                         {"actor_identity_id": "athena", "session_id": "chat-1"},
                     )
-                    self.assertEqual(accessible_resources["results"][0]["id"], "workspace-main")
-                    self.assertEqual(accessible_resources["results"][0]["mode"], "rw")
+                    resource_entries = [item for item in accessible_resources["results"] if item["target_type"] == "resource"]
+                    session_entries = [item for item in accessible_resources["results"] if item["target_type"] == "session"]
+                    identity_entries = [item for item in accessible_resources["results"] if item["target_type"] == "identity"]
+                    self.assertEqual(identity_entries[0]["id"], "athena")
+                    self.assertEqual(identity_entries[0]["mode"], "rw")
+                    self.assertEqual(session_entries[0]["id"], "chat-1")
+                    self.assertEqual(session_entries[0]["mode"], "rw")
+                    self.assertEqual(resource_entries[0]["id"], "workspace-main")
+                    self.assertEqual(resource_entries[0]["mode"], "rw")
 
                     bootstrap_without_session = _request_json(
                         "POST",
                         sandbox_base + "/brain/bootstrap",
                         {
-                            "identity_id": "athena",
+                            "actor_identity_id": "athena",
                             "requestor_id": "zeus",
                         },
                     )

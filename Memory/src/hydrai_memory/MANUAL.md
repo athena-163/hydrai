@@ -28,9 +28,26 @@ Core surfaces:
 
 `/brain/bootstrap` is the normal root-entry API for `Brain`.
 
+Sandbox-port calls are actor-aware:
+
+1. `actor_identity_id` is required for ongoing Brain tool calls
+2. `session_id` is required for mounted `resource` access
+3. `Memory` is the final gate for:
+   1. session participant access
+   2. mounted resource `ro` / `rw`
+   3. self-only identity-tree access
+   4. sandbox plus identity skill filtering
+
+`/resources/list` returns the currently accessible targets for one actor,
+including:
+
+1. the actor's own identity-like root
+2. all sessions the actor belongs to, with mode
+3. mounted resources for the provided session, with mode
+
 Request fields:
 
-1. `identity_id`
+1. `actor_identity_id`
 2. `requestor_id`
 3. optional `session_id`
 4. optional `query`

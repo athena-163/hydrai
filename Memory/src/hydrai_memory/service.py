@@ -352,16 +352,15 @@ class MemoryService:
 
     def _dispatch_identity_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         api = sandbox.identity_brain
-        identity_id = str(body.get("identity_id") or "")
         actor_identity_id = str(body.get("actor_identity_id") or "")
-        self._require_identity_self_access(sandbox, identity_id, actor_identity_id)
+        self._require_identity_self_access(sandbox, actor_identity_id, actor_identity_id)
         if action == "relations":
-            return api.identity_relations(identity_id, list(body.get("friend_ids") or []))
+            return api.identity_relations(actor_identity_id, list(body.get("friend_ids") or []))
         if action == "sessions":
-            return api.identity_sessions(identity_id, list(body.get("session_ids") or []))
+            return api.identity_sessions(actor_identity_id, list(body.get("session_ids") or []))
         if action == "memorables-search":
             return api.identity_memorables_search(
-                identity_id,
+                actor_identity_id,
                 str(body.get("query") or ""),
                 top_content_n=int(body.get("top_content_n", 3)),
                 top_summary_k=int(body.get("top_summary_k", 5)),
@@ -441,11 +440,11 @@ class MemoryService:
 
     def _dispatch_brain_api(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
         if action == "bootstrap":
-            identity_id = str(body.get("identity_id") or "")
+            actor_identity_id = str(body.get("actor_identity_id") or "")
             sandbox.policy.authorize_tree(
                 target_type="identity",
-                target_id=identity_id,
-                actor_identity_id=identity_id,
+                target_id=actor_identity_id,
+                actor_identity_id=actor_identity_id,
                 embedder=sandbox.tree_api_sandbox.embedder,
                 config_path=sandbox.service_config.config_path,
             )
@@ -454,12 +453,12 @@ class MemoryService:
                 sandbox.policy.authorize_tree(
                     target_type="session",
                     target_id=session_id,
-                    actor_identity_id=identity_id,
+                    actor_identity_id=actor_identity_id,
                     embedder=sandbox.tree_api_sandbox.embedder,
                     config_path=sandbox.service_config.config_path,
                 )
             return sandbox.brain_bootstrap.bootstrap(
-                identity_id,
+                actor_identity_id,
                 requestor_id=str(body.get("requestor_id") or ""),
                 session_id=session_id,
                 query=str(body.get("query") or ""),
@@ -470,11 +469,14 @@ class MemoryService:
         raise HttpError(404, "not found")
 
     def _dispatch_resource_brain(self, sandbox: SandboxRuntime, action: str, body: dict[str, Any]) -> Any:
-        api = sandbox.tree_api_sandbox
         if action == "list":
-            return api.list_accessible_resources(
+            return sandbox.policy.list_accessible_targets(
                 actor_identity_id=str(body.get("actor_identity_id") or ""),
+                registry=sandbox.resource_registry,
                 session_id=str(body.get("session_id") or ""),
+                embedder=sandbox.tree_api_sandbox.embedder,
+                config_path=sandbox.service_config.config_path,
+                identity_store=sandbox.identity_store,
             )
         raise HttpError(404, "not found")
 
